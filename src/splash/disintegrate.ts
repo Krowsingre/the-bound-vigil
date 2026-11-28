@@ -37,14 +37,25 @@ const NUDGE = 45;
 export interface Playing {
   pace?: number;
   hold?: number;
+  /** How much bigger each page is than on the computer: fewer pages to draw on a phone. */
+  size?: number;
+  /** The sharpest the drawing gets (the screen's pixels per point, at most). */
+  sharpest?: number;
+  /** The most the animation moves on in one frame (ms). */
+  step?: number;
 }
+
+/** The pages' size for this break-up (set as it starts). */
+let page = { w: PAGE_W, h: PAGE_H, fold: FOLD };
 
 /** The most the animation moves on in one frame (ms): a slow frame slows it, never makes it jump. */
 const STEP = 34;
 
-export async function disintegrate(splash: HTMLElement, { pace = 1, hold = 0 }: Playing = {}): Promise<void> {
+
+export async function disintegrate(splash: HTMLElement, { pace = 1, hold = 0, size = 1, sharpest = 3, step = STEP }: Playing = {}): Promise<void> {
+  page = { w: PAGE_W * size, h: PAGE_H * size, fold: FOLD * size };
   const box = splash.getBoundingClientRect();
-  const dpr = Math.min(window.devicePixelRatio || 1, 3);
+  const dpr = Math.min(window.devicePixelRatio || 1, sharpest);
   const picture = document.createElement("canvas");
   picture.width = Math.round(box.width * dpr);
   picture.height = Math.round(box.height * dpr);
@@ -73,8 +84,8 @@ export async function disintegrate(splash: HTMLElement, { pace = 1, hold = 0 }: 
   out.drawImage(picture, ox, oy);
   splash.remove();
 
-  const cols = Math.ceil(box.width / PAGE_W);
-  const rows = Math.ceil(box.height / PAGE_H);
+  const cols = Math.ceil(box.width / page.w);
+  const rows = Math.ceil(box.height / page.h);
   const pages = cutPages(picture, cols, rows, dpr);
   const back = paperBack(dpr);
   const way = sweepWay(Math.random() * Math.PI * 2);
@@ -85,8 +96,8 @@ export async function disintegrate(splash: HTMLElement, { pace = 1, hold = 0 }: 
       const speed = NUDGE * (0.5 + Math.random());
       const aside = (Math.random() - 0.5) * 30;
       specks.push({
-        x: c * PAGE_W,
-        y: r * PAGE_H,
+        x: c * page.w,
+        y: r * page.h,
         start: way.along(c / cols, r / rows) * SWEEP + Math.random() * 90,
         vx: way.dx * speed - way.dy * aside,
         vy: way.dy * speed + way.dx * aside - 20 * Math.random(),
@@ -98,8 +109,8 @@ export async function disintegrate(splash: HTMLElement, { pace = 1, hold = 0 }: 
       });
     }
   }
-  const w = PAGE_W * dpr;
-  const h = PAGE_H * dpr;
+  const w = page.w * dpr;
+  const h = page.h * dpr;
   if (hold > 0) await new Promise((wait) => setTimeout(wait, hold));
   await new Promise<void>((done) => {
     // The animation's own clock: it moves on by the time since the last frame,
@@ -107,7 +118,7 @@ export async function disintegrate(splash: HTMLElement, { pace = 1, hold = 0 }: 
     let clock = 0;
     let last = performance.now();
     const frame = (now: number) => {
-      clock += Math.min(Math.max(0, now - last), STEP);
+      clock += Math.min(Math.max(0, now - last), step);
       last = now;
       const t = clock / pace;
       out.setTransform(1, 0, 0, 1, 0, 0);
@@ -132,7 +143,7 @@ export async function disintegrate(splash: HTMLElement, { pace = 1, hold = 0 }: 
         const dx = fallX + Math.sin(seconds * p.swing * Math.PI * 2) * p.sway * Math.min(1, age * 3);
         // Each page falls until it has left the card, however long that takes (embre, 28 November):
         // none fades out on the way, so none is left hanging when the card goes.
-        if (p.y + dy > box.height + PAGE_H || p.x + dx > box.width + PAGE_W || p.x + dx < -2 * PAGE_W) {
+        if (p.y + dy > box.height + page.h || p.x + dx > box.width + page.w || p.x + dx < -2 * page.w) {
           p.gone = true;
           continue;
         }
@@ -174,9 +185,9 @@ function cutPages(picture: HTMLCanvasElement, cols: number, rows: number, dpr: n
   pages.height = picture.height;
   const pen = pages.getContext("2d");
   if (!pen) return picture;
-  const w = PAGE_W * dpr;
-  const h = PAGE_H * dpr;
-  const f = FOLD * dpr;
+  const w = page.w * dpr;
+  const h = page.h * dpr;
+  const f = page.fold * dpr;
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
       const x = c * w;
@@ -201,16 +212,16 @@ function cutPages(picture: HTMLCanvasElement, cols: number, rows: number, dpr: n
 /** A page's pale back, for when it turns over. */
 function paperBack(dpr: number): HTMLCanvasElement {
   const back = document.createElement("canvas");
-  back.width = Math.ceil(PAGE_W * dpr);
-  back.height = Math.ceil(PAGE_H * dpr);
+  back.width = Math.ceil(page.w * dpr);
+  back.height = Math.ceil(page.h * dpr);
   const pen = back.getContext("2d");
   if (!pen) return back;
-  pageOutline(pen, 0, 0, PAGE_W * dpr, PAGE_H * dpr, FOLD * dpr);
+  pageOutline(pen, 0, 0, page.w * dpr, page.h * dpr, page.fold * dpr);
   pen.fillStyle = PAPER;
   pen.fill();
   // A few faint lines of print.
   pen.fillStyle = "rgba(60, 56, 50, 0.35)";
-  for (let line = 3; line < PAGE_H - 2; line += 2.5) pen.fillRect(2 * dpr, line * dpr, (PAGE_W - 4) * dpr, 0.6 * dpr);
+  for (let line = 3; line < page.h - 2; line += 2.5) pen.fillRect(2 * dpr, line * dpr, (page.w - 4) * dpr, 0.6 * dpr);
   return back;
 }
 

@@ -611,6 +611,8 @@ export interface Api {
   syncActivity(): Promise<SyncActivity>;
   /** Empties Sync activity's list of recent changes. */
   clearSyncChanges(): Promise<void>;
+  /** Try again on a file sync couldn't move: tried at once, in a new sync. */
+  retrySyncFile(path: string): Promise<void>;
   /** Hears the activity now, then each change to it. Returns a way to stop. */
   onSyncActivity(listener: (activity: SyncActivity) => void): () => void;
   /** Hears sync starting and finishing, and library changes it brings. Returns a way to stop. */
@@ -980,6 +982,7 @@ function appApi(): Api {
     clearFinishedImports: async () => (await core).invoke<void>("clear_finished_imports"),
     syncActivity: async () => (await core).invoke<SyncActivity>("sync_activity"),
     clearSyncChanges: async () => (await core).invoke("clear_sync_changes"),
+    retrySyncFile: async (path) => (await core).invoke("retry_sync_file", { path }),
     onSyncActivity: (listener) => {
       let stop: (() => void) | null = null;
       let stopped = false;

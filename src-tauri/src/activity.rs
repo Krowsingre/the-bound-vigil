@@ -45,6 +45,8 @@ pub struct PlaceActivity {
     pub step: Option<SyncStep>,
     pub received: u32,
     pub sent: u32,
+    /// This device's changes waiting to be sent when sending began.
+    pub to_send: u32,
     /// Files planned for the step that's going, and how many are done.
     pub files_total: u32,
     pub files_done: u32,
@@ -61,6 +63,8 @@ pub struct FileActivity {
     /// None for a book fetched when it was opened.
     pub lane: Option<Lane>,
     pub direction: Direction,
+    /// Where it is in the cloud, for Try again; None for a book fetched when opened.
+    pub path: Option<String>,
     pub what: String,
     pub bytes: u64,
     pub at: String,
@@ -113,6 +117,7 @@ pub fn begin(places: Vec<(Lane, ProviderView)>) {
                 step: None,
                 received: 0,
                 sent: 0,
+                to_send: 0,
                 files_total: 0,
                 files_done: 0,
                 bytes_total: 0,
@@ -135,6 +140,7 @@ pub fn unreachable(lane: Lane, provider: ProviderView, problem: String) {
             step: None,
             received: 0,
             sent: 0,
+            to_send: 0,
             files_total: 0,
             files_done: 0,
             bytes_total: 0,
@@ -164,6 +170,7 @@ pub fn hear(event: SyncEvent) {
         let lane = match &event {
             SyncEvent::Step { lane, .. }
             | SyncEvent::Records { lane, .. }
+            | SyncEvent::ChangesPlanned { lane, .. }
             | SyncEvent::FilesPlanned { lane, .. }
             | SyncEvent::File { lane, .. }
             | SyncEvent::Change { lane, .. }
@@ -183,12 +190,15 @@ pub fn hear(event: SyncEvent) {
                     place.received = received;
                     place.sent = sent;
                 }
+                SyncEvent::ChangesPlanned { count, .. } => {
+                    place.to_send = count;
+                }
                 SyncEvent::FilesPlanned { count, bytes, .. } => {
                     place.files_total += count;
                     place.bytes_total += bytes;
                 }
-                SyncEvent::File { direction, what, bytes, done, problem, .. } => {
-                    let item = FileActivity { lane: Some(lane), direction, what, bytes, at: now(), problem };
+                SyncEvent::File { direction, path, what, bytes, done, problem, .. } => {
+                    let item = FileActivity { lane: Some(lane), direction, path: Some(path), what, bytes, at: now(), problem };
                     if done {
                         place.files_done += 1;
                         if direction == Direction::Up {
@@ -224,5 +234,5 @@ pub fn clear_changes() {
 
 /// A book fetched because it was opened (or sent somewhere) and only the cloud had it.
 pub fn book_fetched(what: String, bytes: u64, problem: Option<String>) {
-    change(|a| remember(a, FileActivity { lane: None, direction: Direction::Down, what, bytes, at: now(), problem }));
+    change(|a| remember(a, FileActivity { lane: None, direction: Direction::Down, path: None, what, bytes, at: now(), problem }));
 }

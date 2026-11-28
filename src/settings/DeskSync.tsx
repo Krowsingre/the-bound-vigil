@@ -20,8 +20,8 @@ import { AlsoSection } from "./AlsoSection";
 import { TidySection } from "./TidySection";
 import { ContentsSection } from "./ContentsSection";
 import { FREE_DATABASE, FREE_FILES, size } from "./UsageSection";
-import { serviceName, SyncFolderPanel, type FolderService } from "./SyncFolderPanel";
-import { ALL_PROVIDERS, PROVIDERS, ProviderPicker, type Provider } from "./providers";
+import { disconnectLabel, serviceName, SyncFolderPanel, type FolderService } from "./SyncFolderPanel";
+import { ALL_PROVIDERS, FIRST_CARD, PROVIDERS, ProviderPicker, type Provider } from "./providers";
 import { AtPage, AtPair, AtRow, AtRows, AtSection, AtSwitch, usePhone } from "./attune";
 import { AtWindow } from "./AtWindow";
 import { Select } from "./controls";
@@ -167,7 +167,14 @@ export function DeskSync() {
             </AtRow>
           )}
         </AtRows>
-        {inUse && overview?.lastError && <p className="form-error">{overview.lastError}</p>}
+        {inUse && overview?.lastError && (
+          <div className="sync-problem">
+            <p className="form-error">{overview.lastError}</p>
+            <button type="button" className="btn btn-quiet btn-small" disabled={state === "syncing"} onClick={() => void api.syncNow()}>
+              Try again
+            </button>
+          </div>
+        )}
         {inUse && !!overview?.status.behind?.length && <p className="settings-row-hint">{behindText(overview.status.behind)}</p>}
         <div className="at-buttons at-card-actions">
           {inUse ? (
@@ -182,7 +189,7 @@ export function DeskSync() {
                 Change…
               </button>
               <button type="button" className="btn btn-quiet btn-danger-text" onClick={stop}>
-                {current.kind === "supabase" || current.kind === "cloud" ? "Sign out" : "Stop syncing"}
+                {current.kind === "supabase" || current.kind === "cloud" ? "Sign out" : disconnectLabel(current)}
               </button>
             </>
           ) : (
@@ -340,11 +347,11 @@ export function DeskSync() {
 /** Choosing and setting up the service: the old Sync provider section, in a window. */
 function ProviderSetup({ overview, inUse, pick, onChanged }: { overview: SyncOverview | null; inUse: Provider | null; pick: boolean; onChanged: () => void }) {
   const toast = useToast();
-  const [provider, setProvider] = useState<Provider>(inUse ?? "supabase");
+  const [provider, setProvider] = useState<Provider>(inUse ?? FIRST_CARD);
   const [editing, setEditing] = useState(false);
   const project = overview?.project ?? null;
   const signedIn = overview?.signedInAs ?? null;
-  const current = overview?.provider ?? { kind: "supabase" as const, service: null, location: null, username: null };
+  const current: ProviderView = overview?.provider ?? { kind: "off", service: null, location: null, username: null };
   const saveProject = (next: SupabaseProject | null) =>
     api.setSupabaseProject(next).then(
       () => {
@@ -671,8 +678,73 @@ function SupabaseStorage({ split }: { split: CloudSpace | null }) {
   );
 }
 
+/**
+ * Each Activity list as tall as a whole number of its rows, and never less than one,
+ * so no row is ever cut part way (embre, 28 November). Measured again whenever the
+ * window or a list changes.
+ */
+function useWholeRows(on: boolean) {
+  useEffect(() => {
+    if (!on) return;
+    const page = document.querySelector<HTMLElement>(".at-activity:not(.is-ios)");
+    if (!page) return;
+    let frame = 0;
+    const fit = () => {
+      frame = 0;
+      const lists = [...page.querySelectorAll<HTMLElement>(".activity-pane > .imports-group")];
+      // A card folded by hand is left exactly as folding draws it.
+      for (const folded of page.querySelectorAll<HTMLElement>(":scope > .at-section.is-folded")) Object.assign(folded.style, { flex: "", minHeight: "" });
+      const cards = [...page.querySelectorAll<HTMLElement>(":scope > .at-section:not(.is-folded)")];
+      // The least each list can be: its heading and one whole row (a list with no rows,
+      // just a line saying so, is never cut at all).
+      const least = lists.map((list) => {
+        const rows = list.querySelectorAll<HTMLElement>("li");
+        if (!rows.length) return { list, min: list.scrollHeight, above: 0, row: 0 };
+        const box = list.getBoundingClientRect();
+        const first = rows[0].getBoundingClientRect();
+        const above = first.top - box.top + list.scrollTop;
+        const row = rows.length > 1 ? rows[1].getBoundingClientRect().top - first.top : first.height;
+        return { list, min: Math.ceil(above + Math.max(row, 0)), above, row };
+      });
+      // Each card and the page drawn at their least for a moment, to measure them…
+      for (const { list, min } of least) Object.assign(list.style, { flex: "0 0 auto", height: `${min}px`, minHeight: "", maxHeight: "" });
+      for (const card of cards) Object.assign(card.style, { flex: "none", minHeight: "" });
+      Object.assign(page.style, { flex: "none", minHeight: "" });
+      const cardLeast = cards.map((card) => card.offsetHeight);
+      const pageLeast = page.offsetHeight;
+      // …then put back to share the window, never smaller than that.
+      for (const { list, min } of least) Object.assign(list.style, { flex: "", height: "", minHeight: `${min}px` });
+      cards.forEach((card, i) => Object.assign(card.style, { flex: "", minHeight: `${cardLeast[i]}px` }));
+      Object.assign(page.style, { flex: "", minHeight: `${pageLeast}px` });
+      // A list that had to give way shows whole rows only.
+      for (const { list, above, row } of least) {
+        if (row <= 0 || list.scrollHeight <= list.clientHeight + 1) continue;
+        const whole = Math.max(1, Math.floor((list.clientHeight - above) / row));
+        list.style.maxHeight = `${Math.ceil(above + whole * row)}px`;
+      }
+    };
+    const soon = () => {
+      if (!frame) frame = requestAnimationFrame(fit);
+    };
+    const sized = new ResizeObserver(soon);
+    sized.observe(page);
+    page.querySelectorAll(".at-activity-frame").forEach((f) => sized.observe(f));
+    const changed = new MutationObserver(soon);
+    changed.observe(page, { childList: true, subtree: true });
+    window.addEventListener("resize", soon);
+    soon();
+    return () => {
+      cancelAnimationFrame(frame);
+      sized.disconnect();
+      changed.disconnect();
+      window.removeEventListener("resize", soon);
+    };
+  }, [on]);
+}
+
 /** Imports, Sync and Confluence, one above another; each list scrolls in its own frame. */
 export function DeskActivity({ imports, sync }: { imports: React.ReactNode; sync: React.ReactNode }) {
+  useWholeRows(!usePhone());
   return (
     <AtPage className="at-activity">
       <AtSection id="imports" title="Imports" also={["activity"]}>

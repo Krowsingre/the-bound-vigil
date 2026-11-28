@@ -3966,11 +3966,6 @@ kbd {
   flex: none;
   position: static;
 }
-.at-activity:not(.is-ios) .activity-pane > :not(.activity-head):not(.lining-switch) {
-  flex: 0 1 auto;
-  min-height: 0;
-  overflow-y: auto;
-}
 .at-activity:not(.is-ios) .activity-pane > .imports-group > .settings-row-hint {
   position: sticky;
   top: 0;
@@ -4154,4 +4149,38 @@ kbd {
 }
 .at-page.is-ios .at-activity-frame {
   padding: 10px 0 12px;
+}
+
+/* A sync problem with Try again beside it (embre, 28 November). */
+.sync-problem {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  justify-content: space-between;
+}
+.sync-problem .form-error {
+  margin: 0;
+  flex: 1;
+  min-width: 0;
+}
+.sync-problem .btn {
+  flex: none;
+}
+
+/* Activity never squashes a card by itself (embre, 28 November): an open card keeps its
+   header, its buttons and at least one whole row; only the lists scroll, each showing
+   whole rows. The least each card and the page can be is measured and set by
+   useWholeRows in DeskSync.tsx; when the window is shorter than that, the page scrolls.
+   Folding a card by hand is unchanged. */
+.content:has(.at-activity:not(.is-ios)) {
+  overflow-y: auto;
+}
+.at-activity:not(.is-ios) .activity-pane > :not(.imports-group) {
+  flex: none;
+  overflow: visible;
+}
+.at-activity:not(.is-ios) .activity-pane > .imports-group {
+  flex: 0 1 auto;
+  min-height: 0;
+  overflow-y: auto;
 }

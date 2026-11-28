@@ -8,6 +8,7 @@ import { Icon } from "../components/Icon";
 import { ProgressBar } from "../components/ProgressBar";
 import { relativeTime } from "../lib/format";
 import { placeWords } from "../settings/SyncFolderPanel";
+import { percentOf, placeProgress } from "./progress";
 
 const NOTHING: Activity = { running: false, startedAt: null, finishedAt: null, places: [], recent: [], changes: [] };
 
@@ -51,8 +52,9 @@ function fileIcon(f: FileActivity) {
 }
 
 function Place({ place }: { place: PlaceActivity }) {
-  // Counted by files: download sizes aren't known until they arrive.
-  const fraction = place.filesTotal ? place.filesDone / place.filesTotal : 0;
+  // Changes counted against what was waiting; files by count, as download
+  // sizes aren't known until they arrive (embre, 28 November).
+  const progress = placeProgress(place);
   const moving = !place.finished && place.step === "files" && place.filesTotal > 0;
   return (
     <section className={`imports-summary sync-place${place.problem ? " is-bad" : ""}`} aria-live="polite">
@@ -61,14 +63,12 @@ function Place({ place }: { place: PlaceActivity }) {
         <h2>{placeName(place)}</h2>
         {place.provider.location && <p className="settings-row-hint mono">{place.provider.location}</p>}
         <p className="settings-row-hint">
-          {stepText(place)}
-          {(place.received > 0 || place.sent > 0) &&
+          {progress ? (progress.fraction === null ? progress.text : `${progress.text} (${percentOf(progress.fraction)})`) : stepText(place)}
+          {place.finished && (place.received > 0 || place.sent > 0) &&
             ` · ${plural(place.received, "change")} received, ${plural(place.sent, "change")} sent`}
         </p>
       </div>
-      {moving && (
-        <ProgressBar value={fraction} label={`${Math.round(fraction * 100)}% of files moved to or from ${placeName(place)}`} />
-      )}
+      {progress?.fraction != null && <ProgressBar value={progress.fraction} label={`${progress.text}, ${placeName(place)}`} />}
       {moving && place.bytesTotal > 0 && (
         <p className="settings-row-hint">
           {size(place.bytesDone)} of {size(place.bytesTotal)} uploaded
@@ -83,7 +83,14 @@ function Place({ place }: { place: PlaceActivity }) {
           </div>
         </div>
       )}
-      {place.problem && <p className="form-error">{place.problem}</p>}
+      {place.problem && (
+        <div className="sync-problem">
+          <p className="form-error">{place.problem}</p>
+          <button type="button" className="btn btn-quiet btn-small" onClick={() => void api.syncNow()}>
+            Try again
+          </button>
+        </div>
+      )}
     </section>
   );
 }
@@ -191,7 +198,13 @@ export function SyncActivity({
                         {f.lane === null ? " when you opened it" : activity.places.length > 1 ? ` · ${f.lane === "main" ? "main sync" : "second sync"}` : ""}
                       </span>
                     </div>
-                    <span className="import-detail sync-when">{relativeTime(f.at)}</span>
+                    {f.problem && f.path ? (
+                      <button type="button" className="btn btn-quiet btn-small" disabled={running} onClick={() => void api.retrySyncFile(f.path!)}>
+                        Try again
+                      </button>
+                    ) : (
+                      <span className="import-detail sync-when">{relativeTime(f.at)}</span>
+                    )}
                   </li>
                 ))}
               </ul>

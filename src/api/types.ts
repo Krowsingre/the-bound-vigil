@@ -1422,6 +1422,8 @@ export interface FileActivity {
   /** "main" or "also"; null for a book fetched when it was opened. */
   lane: "main" | "also" | null;
   direction: "up" | "down" | "erase";
+  /** Where it is in the cloud, for Try again; null for a book fetched when opened. */
+  path?: string | null;
   what: string;
   bytes: number;
   at: IsoUtc;
@@ -1435,6 +1437,8 @@ export interface PlaceActivity {
   step: "receiving" | "sending" | "files" | null;
   received: number;
   sent: number;
+  /** This device's changes waiting to be sent when sending began. */
+  toSend: number;
   filesTotal: number;
   filesDone: number;
   bytesTotal: number;

@@ -599,6 +599,36 @@ impl FolderStore {
     }
 }
 
+/// Whether a read failed because the cloud app was slow to bring the file
+/// down: Windows' cloud files time out (426), report the app not running
+/// yet (362) or the fetch not finishing (389). Worth trying again.
+fn cloud_was_slow(error: &std::io::Error) -> bool {
+    matches!(error.raw_os_error(), Some(426 | 362 | 389)) || error.kind() == std::io::ErrorKind::TimedOut
+}
+
+/// The waits between tries, in seconds: a file iCloud is slow with gets
+/// three more chances, each after a longer wait (embre, 28 November).
+const SLOW_WAITS: [u64; 3] = [2, 5, 10];
+
+/// Runs a read of a file in a cloud app's folder, trying again when the app
+/// was too slow to bring it down, rather than failing the sync at once.
+fn patiently<T>(mut read: impl FnMut() -> std::io::Result<T>) -> std::io::Result<T> {
+    patiently_waiting(&mut read, |seconds| std::thread::sleep(std::time::Duration::from_secs(seconds)))
+}
+
+fn patiently_waiting<T>(read: &mut impl FnMut() -> std::io::Result<T>, mut wait: impl FnMut(u64)) -> std::io::Result<T> {
+    let mut tries = SLOW_WAITS.iter();
+    loop {
+        match read() {
+            Err(e) if cloud_was_slow(&e) && !crate::stop::stopped() => match tries.next() {
+                Some(&seconds) => wait(seconds),
+                None => return Err(e),
+            },
+            other => return other,
+        }
+    }
+}
+
 impl Store for FolderStore {
     fn read(&mut self, path: &str) -> Result<Option<Vec<u8>>> {
         let at = self.at(path);
@@ -606,7 +636,7 @@ impl Store for FolderStore {
             refresh(&at);
         }
         bring_down(&at);
-        match fs::read(at) {
+        match patiently(|| fs::read(&at)) {
             Ok(bytes) => Ok(Some(bytes)),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
             Err(e) => Err(e.into()),
@@ -644,7 +674,7 @@ impl Store for FolderStore {
         if !from.is_file() {
             return Ok(false);
         }
-        fs::copy(from, to)?;
+        patiently(|| fs::copy(&from, to))?;
         Ok(true)
     }
 
@@ -709,7 +739,7 @@ impl Store for FolderStore {
         use std::io::{Read, Seek, SeekFrom};
         let at = self.at(path);
         bring_down(&at);
-        let mut file = match fs::File::open(at) {
+        let mut file = match patiently(|| fs::File::open(&at)) {
             Ok(file) => file,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
             Err(e) => return Err(e.into()),
@@ -729,6 +759,33 @@ impl Store for FolderStore {
 pub(crate) mod tests {
     use super::*;
     use crate::model::IsoUtc;
+
+    #[test]
+    fn a_file_the_cloud_is_slow_with_is_tried_again() {
+        let slow = || std::io::Error::from_raw_os_error(426);
+        let mut tries = 0;
+        let mut waited = Vec::new();
+        let got = patiently_waiting(
+            &mut || {
+                tries += 1;
+                if tries < 3 { Err(slow()) } else { Ok(7) }
+            },
+            |s| waited.push(s),
+        );
+        assert_eq!(got.unwrap(), 7);
+        assert_eq!(waited, [2, 5], "each wait longer than the last");
+
+        let mut tries = 0;
+        let got: std::io::Result<()> = patiently_waiting(&mut || (tries += 1, Err(slow())).1, |_| {});
+        assert!(got.is_err());
+        assert_eq!(tries, 4, "three more tries, then it gives up");
+
+        let mut tries = 0;
+        let got: std::io::Result<()> =
+            patiently_waiting(&mut || (tries += 1, Err(std::io::Error::from(std::io::ErrorKind::PermissionDenied))).1, |_| {});
+        assert!(got.is_err());
+        assert_eq!(tries, 1, "other problems aren't tried again");
+    }
 
     fn record(n: u32) -> Record {
         Record { kind: "book".into(), key: format!("[\"sha256:{n}\"]"), data: None, changed_at: IsoUtc::from(format!("2026-10-17T00:00:{n:02}.000Z")) }

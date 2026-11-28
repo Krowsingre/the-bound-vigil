@@ -80,6 +80,14 @@ export function placeWords(view: ProviderView, capital = false): string {
   return "Supabase";
 }
 
+/** The button that stops syncing with a place, named for it (embre, 28 November). */
+export function disconnectLabel(view: ProviderView): string {
+  if (view.kind === "webdav") return "Disconnect from WebDAV";
+  if ((view.kind === "folder" || view.kind === "cloud") && view.service && (view.service === "google" || view.service in SERVICE))
+    return `Disconnect from ${serviceName(view.service)}`;
+  return "Disconnect folder";
+}
+
 /** How Settings shows a choice before the core has it. */
 export function viewOfChoice(choice: ProviderChoice): ProviderView {
   if (choice.kind === "folder") return { kind: "folder", service: choice.service, location: choice.path, username: null };
