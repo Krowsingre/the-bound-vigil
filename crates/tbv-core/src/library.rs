@@ -830,6 +830,23 @@ const MIGRATIONS: &[&str] = &[
         deleted_at TEXT
     );
     "#,
+    // v53: whole-book translations (embre, 28 November), one row per
+    // section, made by Apple Translate or the reader's own AI. `blocks` is
+    // the section's translated text blocks in reading order. Synced, so a
+    // book translated once reads translated on every device.
+    r#"
+    CREATE TABLE book_translations (
+        book_id TEXT NOT NULL,
+        engine TEXT NOT NULL,
+        lang TEXT NOT NULL,
+        section INTEGER NOT NULL,
+        blocks TEXT NOT NULL,
+        sections INTEGER NOT NULL,
+        name TEXT NOT NULL DEFAULT '',
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (book_id, engine, lang, section)
+    );
+    "#,
 ];
 
 /// Early builds had four built-in shelves, but three of them repeated smart
