@@ -792,21 +792,29 @@ impl Provider {
     }
 }
 
-/// Two spellings of one folder. Windows and the Mac don't mind capitals or
-/// which slash is used, so `iCloudDrive` and `icloudDrive\` are the same
-/// folder there, and choosing it again mustn't start sync over (embre, 28 November).
+/// Two spellings of one folder, so choosing it again mustn't start sync over
+/// (embre, 28 November). When both exist, the file system says whether
+/// they're one folder, capitals and all. Otherwise only what the system
+/// itself ignores is: a trailing separator, and on Windows capitals and
+/// which slash is used (`iCloudDrive` and `icloudDrive\`).
 pub(crate) fn same_folder(a: &str, b: &str) -> bool {
+    if a == b {
+        return true;
+    }
+    if let (Ok(x), Ok(y)) = (std::fs::canonicalize(a), std::fs::canonicalize(b)) {
+        return x == y;
+    }
     fn plain(path: &str) -> String {
-        let unified: String = path.trim().chars().map(|c| if c == '\\' { '/' } else { c }).collect();
+        let unified: String = if cfg!(windows) { path.chars().map(|c| if c == '\\' { '/' } else { c }).collect() } else { path.to_string() };
         let trimmed = unified.trim_end_matches('/');
         let kept = if trimmed.is_empty() { unified.as_str() } else { trimmed };
-        if cfg!(any(windows, target_os = "macos", target_os = "ios")) {
+        if cfg!(windows) {
             kept.to_lowercase()
         } else {
             kept.to_string()
         }
     }
-    a == b || plain(a) == plain(b)
+    plain(a) == plain(b)
 }
 
 /// A connection to wherever the library is kept.

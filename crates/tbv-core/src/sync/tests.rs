@@ -2030,12 +2030,18 @@ fn supabase_is_never_assumed_but_a_signed_in_library_keeps_it() {
 
 #[test]
 fn choosing_the_same_folder_again_never_starts_sync_over() {
-    assert!(super::same_folder(r"C:\Users\k\iCloudDrive\Krowsingre", r"C:\Users\k\iCloudDrive\Krowsingre\"));
-    assert!(super::same_folder("C:/Users/k/iCloudDrive/Krowsingre", r"C:\Users\k\iCloudDrive\Krowsingre"));
-    if cfg!(any(windows, target_os = "macos", target_os = "ios")) {
-        assert!(super::same_folder(r"C:\Users\k\iCloudDrive\Krowsingre", r"c:\users\k\icloudDrive\krowsingre"));
+    assert!(super::same_folder("/sync/Krowsingre", "/sync/Krowsingre/"));
+    assert!(!super::same_folder("/sync/library", "/sync/library "), "a space is part of the name");
+    if cfg!(windows) {
+        assert!(super::same_folder(r"C:\Users\k\iCloudDrive\Krowsingre", r"c:/users/k/icloudDrive/krowsingre\"));
+    } else {
+        assert!(!super::same_folder("/sync/Library", "/sync/library"), "missing folders keep their capitals outside Windows");
     }
     assert!(!super::same_folder(r"C:\Users\k\iCloudDrive\Krowsingre", r"C:\Users\k\Dropbox\Krowsingre"));
+    // Folders that exist: the file system decides.
+    let real = tempfile::tempdir().unwrap();
+    let path = real.path().display().to_string();
+    assert!(super::same_folder(&path, &format!("{path}/")));
 
     let (_dir, mut library) = open_temp_library();
     let folder = |path: &str| Provider::Folder { service: "icloud".into(), path: path.into() };
