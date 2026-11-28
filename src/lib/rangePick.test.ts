@@ -1,6 +1,6 @@
 import { renderHook } from "@testing-library/react";
 import { expect, test } from "vitest";
-import { useRangePick } from "./rangePick";
+import { rowPick, useRangePick } from "./rangePick";
 
 test("shift-click picks everything between the last click and this one", () => {
   const { result } = renderHook(() => useRangePick());
@@ -14,4 +14,14 @@ test("shift-click picks everything between the last click and this one", () => {
   expect([...chosen].sort()).toEqual(["a", "b", "c", "d", "e"]);
   chosen = result.current(chosen, order, "c", false);
   expect([...chosen].sort()).toEqual(["a", "b", "d", "e"]);
+});
+
+test("a row picks on a click anywhere but its controls", () => {
+  const picks: boolean[] = [];
+  const row = rowPick((shift) => picks.push(shift));
+  const li = document.createElement("li");
+  li.innerHTML = "<span>Title</span><button>More</button>";
+  row.onClick({ target: li.querySelector("span"), shiftKey: true });
+  row.onClick({ target: li.querySelector("button"), shiftKey: false });
+  expect(picks).toEqual([true]);
 });

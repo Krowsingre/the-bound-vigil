@@ -815,6 +815,21 @@ const MIGRATIONS: &[&str] = &[
     // `binned_at` is when, synced with the book; restoring clears it, and
     // once the days have passed the book is deleted for good.
     "ALTER TABLE books ADD COLUMN binned_at TEXT;",
+    // v52: Find alike groups ignored (embre, 28 November), for some hours or
+    // for good (`until` empty), by the keys the group was found by. Synced.
+    r#"
+    CREATE TABLE alike_ignored (
+        id TEXT PRIMARY KEY,
+        kind TEXT NOT NULL,
+        name TEXT NOT NULL,
+        author TEXT NOT NULL DEFAULT '',
+        keys TEXT NOT NULL,
+        until TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        deleted_at TEXT
+    );
+    "#,
 ];
 
 /// Early builds had four built-in shelves, but three of them repeated smart

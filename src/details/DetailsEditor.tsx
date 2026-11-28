@@ -3,6 +3,7 @@
 // details, and taking the edit away shows them again.
 
 import { useEffect, useRef, useState } from "react";
+import { useTickRange, withShift } from "../lib/rangePick";
 import { api } from "../api";
 import type { BookPreview, DetailChange, DetailField, DetailFieldName, SeriesPlace } from "../api/types";
 import { ConfirmDialog } from "../components/ConfirmDialog";
@@ -46,6 +47,7 @@ export function DetailsEditor({ books, onClose }: { books: BookPreview[]; onClos
   const [values, setValues] = useState<Values>({});
   // Many books: only the details ticked here change.
   const [chosen, setChosen] = useState<Set<DetailFieldName>>(new Set());
+  const tickRange = useTickRange();
   // Lists (authors, genres, narrators): add to what a book has, or replace it.
   // Many books start on Add; one book shows its list to change.
   const [modes, setModes] = useState<Partial<Record<DetailFieldName, ListMode>>>({});
@@ -271,14 +273,15 @@ export function DetailsEditor({ books, onClose }: { books: BookPreview[]; onClos
                         <input
                           type="checkbox"
                           checked={!off}
-                          onChange={(e) =>
-                            setChosen((c) => {
-                              const next = new Set(c);
-                              if (e.target.checked) next.add(field);
-                              else next.delete(field);
-                              return next;
-                            })
-                          }
+                          onChange={(e) => {
+                            // Shift: every detail from the one ticked last takes the same tick.
+                            const next = new Set(chosen);
+                            for (const f of tickRange(shownFields.map((x) => x.field), field, withShift(e)) as DetailFieldName[]) {
+                              if (e.target.checked) next.add(f);
+                              else next.delete(f);
+                            }
+                            setChosen(next);
+                          }}
                         />
                         {label}
                       </label>

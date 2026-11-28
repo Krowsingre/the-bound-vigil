@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useTickRange, withShift } from "../lib/rangePick";
 import { api } from "../api";
 import type { BookPreview, CollectionSummary } from "../api/types";
 import { useToast } from "../components/Toast";
@@ -77,7 +78,19 @@ function AddToCollectionDialog({ books, onClose }: { books: BookPreview[]; onClo
   }, []);
 
   /** Puts all the books in the collection, or takes them all out. */
-  const change = async (c: CollectionSummary, add: boolean) => {
+  // Shift: every collection from the one ticked last gets the same tick.
+  const tickRange = useTickRange();
+  const changeFrom = async (c: CollectionSummary, add: boolean, shift: boolean) => {
+    const ids = tickRange(collections?.map((x) => x.id) ?? [], c.id, shift);
+    if (ids.length === 1) return change(c, add);
+    for (const id of ids) {
+      const target = collections?.find((x) => x.id === id);
+      if (target && (member.get(id)?.size ?? 0) !== (add ? books.length : 0)) await change(target, add, true);
+    }
+    if (!one) toast(add ? `Added ${named} to ${ids.length} collections.` : `Took ${named} out of ${ids.length} collections.`);
+  };
+
+  const change = async (c: CollectionSummary, add: boolean, quiet = false) => {
     const inIt = member.get(c.id) ?? new Set<string>();
     setWorking(c.id);
     try {
@@ -85,7 +98,7 @@ function AddToCollectionDialog({ books, onClose }: { books: BookPreview[]; onClo
       else for (const b of books.filter((b) => inIt.has(b.id))) await api.removeFromCollection(c.id, b.id);
       setMember((m) => new Map(m).set(c.id, add ? new Set(books.map((b) => b.id)) : new Set()));
       setChanged(true);
-      if (!one) toast(add ? `Added ${named} to ${c.name}.` : `Took ${named} out of ${c.name}.`);
+      if (!one && !quiet) toast(add ? `Added ${named} to ${c.name}.` : `Took ${named} out of ${c.name}.`);
     } catch (e) {
       toast(String(e));
     } finally {
@@ -132,7 +145,7 @@ function AddToCollectionDialog({ books, onClose }: { books: BookPreview[]; onClo
                     }}
                     disabled={working !== null}
                     title={!one && has > 0 && !all ? `${has.toLocaleString()} of them are in it. Tick to add the rest.` : undefined}
-                    onChange={() => void change(c, !all)}
+                    onChange={(e) => void changeFrom(c, !all, withShift(e))}
                   />
                   <Badge name={c.badge} size={16} />
                   <span className="add-name">{c.name}</span>

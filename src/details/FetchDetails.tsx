@@ -6,6 +6,7 @@
 // 10, 12, 14, and more than one series), and kept as your own edit.
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useTickRange, withShift } from "../lib/rangePick";
 import { api, isApp } from "../api";
 import type { BookDetails, BookPreview, DetailFieldName } from "../api/types";
 import { BookCover } from "../components/BookCover";
@@ -168,13 +169,18 @@ export function FetchDetails({ book, onClose, step }: { book: BookPreview; onClo
     }
   };
 
-  const toggle = (field: string) =>
-    setKeep((k) => {
-      const next = new Set(k);
-      if (next.has(field)) next.delete(field);
-      else next.add(field);
-      return next;
-    });
+  // Shift: every detail from the one ticked last takes the same tick.
+  const tickRange = useTickRange();
+  const toggle = (field: string, shift = false) => {
+    const on = !keep.has(field);
+    const order = DETAIL_FIELDS.map((f) => f.field).filter((f) => values[f]);
+    const next = new Set(keep);
+    for (const f of tickRange(order, field, shift)) {
+      if (on) next.add(f);
+      else next.delete(f);
+    }
+    setKeep(next);
+  };
 
   return (
     <div className="dialog-backdrop" onPointerDown={(e) => e.target === e.currentTarget && onClose(false)}>
@@ -289,7 +295,7 @@ export function FetchDetails({ book, onClose, step }: { book: BookPreview; onClo
                   return (
                     <div key={field} className="fetch-row fetch-row-series" role="row">
                       <label role="cell" className="fetch-field">
-                        <input type="checkbox" checked={keep.has(field)} onChange={() => toggle(field)} />
+                        <input type="checkbox" checked={keep.has(field)} onChange={(e) => toggle(field, withShift(e))} />
                         {detailLabel(field)}
                       </label>
                       <span role="cell" className="fetch-now">
@@ -305,7 +311,7 @@ export function FetchDetails({ book, onClose, step }: { book: BookPreview; onClo
                 return (
                   <div key={field} className="fetch-row" role="row">
                     <label role="cell" className="fetch-field">
-                      <input type="checkbox" checked={keep.has(field)} onChange={() => toggle(field)} />
+                      <input type="checkbox" checked={keep.has(field)} onChange={(e) => toggle(field, withShift(e))} />
                       {detailLabel(field)}
                     </label>
                     <span role="cell" className="fetch-now">

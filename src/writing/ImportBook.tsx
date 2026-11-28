@@ -14,6 +14,7 @@ import { RememberedDetails } from "../components/RememberedDetails";
 // written (the words there now are kept as a draft first).
 
 import { useEffect, useRef, useState } from "react";
+import { withShift } from "../lib/rangePick";
 import { api, isWeb } from "../api";
 import { Icon } from "../components/Icon";
 import { formatBytes } from "../settings/controls";
@@ -253,6 +254,16 @@ export function ImportBookDialog({
 
   const change = (i: number, edit: Partial<ManuscriptSection>) =>
     setManuscript((m) => (m ? { ...m, sections: m.sections.map((s, j) => (j === i ? { ...s, ...edit, sure: true } : s)), issues: m.issues.filter((x) => !(x.section === i && x.kind === "classification" && edit.area)) } : m));
+
+  // Shift-click: every section from the one ticked last takes the same tick.
+  const lastTicked = useRef<number | null>(null);
+  const tick = (i: number, include: boolean, shift: boolean) => {
+    const from = lastTicked.current;
+    lastTicked.current = i;
+    if (!shift || from === null || from === i) return change(i, { include });
+    const [a, b] = from < i ? [from, i] : [i, from];
+    setManuscript((m) => (m ? { ...m, sections: m.sections.map((s, j) => (j >= a && j <= b ? { ...s, include, sure: true } : s)) } : m));
+  };
 
   /** A Scribe book file, made into the book it was saved from. */
   const makeFromTbv = async (book: TbvBook) => {
@@ -695,7 +706,7 @@ export function ImportBookDialog({
                           return (
                             <li key={i} className={[flags.length ? "is-flagged" : "", s.partOf !== undefined ? "is-in-part" : ""].filter(Boolean).join(" ") || undefined}>
                               <div className="check-row">
-                                <input type="checkbox" aria-label={`Bring in ${s.title || "this section"}`} checked={s.include} onChange={(e) => change(i, { include: e.target.checked })} />
+                                <input type="checkbox" aria-label={`Bring in ${s.title || "this section"}`} checked={s.include} onChange={(e) => tick(i, e.target.checked, withShift(e))} />
                                 <span className="import-book-chapter-title">{s.title || <em className="muted">Untitled poem</em>}</span>
                                 {s.isPart ? (
                                   <span className="muted import-kind-label">Section</span>

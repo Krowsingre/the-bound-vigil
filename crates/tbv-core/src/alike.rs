@@ -199,11 +199,25 @@ fn shared_start(stems: &[String]) -> String {
     first[..n].join(" ")
 }
 
+/// Groups being formed. Each root keeps the series and first authors of its
+/// books, so two series by different authors aren't joined only because their
+/// titles start alike (embre, 28 November: Dungeon Diving and Dungeon Diving
+/// Culinary Wizard).
 struct Found {
     parent: Vec<usize>,
+    series: Vec<HashSet<String>>,
+    authors: Vec<HashSet<String>>,
 }
 
 impl Found {
+    fn new(rows: &[Row]) -> Self {
+        let one = |v: Vec<String>| v.into_iter().collect::<HashSet<String>>();
+        Found {
+            parent: (0..rows.len()).collect(),
+            series: rows.iter().map(|r| one(values(r, "series"))).collect(),
+            authors: rows.iter().map(|r| one(values(r, "author"))).collect(),
+        }
+    }
     fn root(&mut self, i: usize) -> usize {
         let mut i = i;
         while self.parent[i] != i {
@@ -212,12 +226,39 @@ impl Found {
         }
         i
     }
+    /// Joins the groups of `a` and `b`, unless they share no author and no
+    /// series while one of them is in a series.
     fn join(&mut self, a: usize, b: usize) {
         let (a, b) = (self.root(a), self.root(b));
-        if a != b {
-            self.parent[a.max(b)] = a.min(b);
+        if a == b {
+            return;
         }
+        // No shared author: a series doesn't take in another series, or a book
+        // by someone else, only because their titles start alike.
+        let apart = self.authors[a].is_disjoint(&self.authors[b])
+            && (!self.series[a].is_empty() || !self.series[b].is_empty())
+            && self.series[a].is_disjoint(&self.series[b]);
+        if apart {
+            return;
+        }
+        let (keep, gone) = (a.min(b), a.max(b));
+        self.parent[gone] = keep;
+        let series = std::mem::take(&mut self.series[gone]);
+        self.series[keep].extend(series);
+        let authors = std::mem::take(&mut self.authors[gone]);
+        self.authors[keep].extend(authors);
     }
+}
+
+/// A Find alike group set aside: until a time, or for good when `until` is empty.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AlikeIgnored {
+    pub id: String,
+    pub name: String,
+    pub author: String,
+    pub keys: Vec<String>,
+    pub until: Option<String>,
 }
 
 impl Library {
@@ -283,12 +324,23 @@ impl Library {
             keys_of.push(keys);
             stems.push(stem(&row.book.title));
         }
-        let mut found = Found { parent: (0..rows.len()).collect() };
-        for members in by_key.values() {
-            for pair in members.windows(2) {
-                found.join(pair[0], pair[1]);
+        let mut found = Found::new(&rows);
+        // Sorted, so the groups come out the same on every run.
+        let mut lists: Vec<&Vec<usize>> = by_key.values().collect();
+        lists.sort();
+        for members in lists {
+            // Each book joins every group already met under this key that it may join.
+            let mut met: Vec<usize> = Vec::new();
+            for &i in members {
+                for &j in &met {
+                    found.join(j, i);
+                }
+                let root = found.root(i);
+                met.retain(|&j| found.root(j) != root);
+                met.push(i);
             }
         }
+        let ignored: HashSet<String> = self.alike_ignored(kind)?.into_iter().flat_map(|g| g.keys).collect();
         let mut groups: BTreeMap<usize, Vec<usize>> = BTreeMap::new();
         for (i, keys) in keys_of.iter().enumerate() {
             if !keys.is_empty() {
@@ -306,6 +358,9 @@ impl Library {
             let mut keys: Vec<String> = members.iter().flat_map(|&i| keys_of[i].iter().cloned()).collect();
             keys.sort();
             keys.dedup();
+            if keys.iter().any(|k| ignored.contains(k)) {
+                continue;
+            }
             let members: Vec<usize> = members.into_iter().filter(|&i| !keys.iter().any(|k| kept_out[i].contains(k))).collect();
             if members.len() < 2 {
                 continue;
@@ -383,10 +438,76 @@ impl Library {
         Ok(books)
     }
 
+    /// Ignores a group for `hours`, or for good when `None`.
+    pub fn ignore_alike(&self, kind: ItemKind, name: &str, author: &str, keys: &[String], hours: Option<f64>) -> Result<AlikeIgnored> {
+        if keys.is_empty() {
+            return Err(crate::error::Error::Unsuitable("This group has nothing to ignore it by.".into()));
+        }
+        let until = match hours {
+            Some(h) if h.is_finite() && h > 0.0 && h <= 24.0 * 366.0 * 100.0 => {
+                let at = chrono::Utc::now() + chrono::Duration::milliseconds((h * 3_600_000.0).round() as i64);
+                Some(at.to_rfc3339_opts(chrono::SecondsFormat::Millis, true))
+            }
+            Some(_) => return Err(crate::error::Error::Unsuitable("Hours should be a number above 0.".into())),
+            None => None,
+        };
+        let now = now_utc();
+        let ignored = AlikeIgnored {
+            id: uuid::Uuid::new_v4().to_string(),
+            name: name.trim().to_string(),
+            author: author.trim().to_string(),
+            keys: keys.to_vec(),
+            until,
+        };
+        self.conn.execute(
+            "INSERT INTO alike_ignored (id, kind, name, author, keys, until, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7)",
+            params![ignored.id, kind_name(kind), ignored.name, ignored.author, serde_json::to_string(&ignored.keys)?, ignored.until, now],
+        )?;
+        Ok(ignored)
+    }
+
+    /// The groups of one kind ignored now (not yet past their time), soonest back first.
+    pub fn alike_ignored(&self, kind: ItemKind) -> Result<Vec<AlikeIgnored>> {
+        let now = now_utc();
+        let mut statement = self.conn.prepare(
+            "SELECT id, name, author, keys, until FROM alike_ignored
+             WHERE kind = ?1 AND deleted_at IS NULL AND (until IS NULL OR until > ?2)
+             ORDER BY until IS NULL, until, lower(name)",
+        )?;
+        let list = statement
+            .query_map(params![kind_name(kind), now], |r| {
+                let keys: String = r.get(3)?;
+                Ok(AlikeIgnored {
+                    id: r.get(0)?,
+                    name: r.get(1)?,
+                    author: r.get(2)?,
+                    keys: serde_json::from_str(&keys).unwrap_or_default(),
+                    until: r.get(4)?,
+                })
+            })?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+        Ok(list)
+    }
+
+    /// Brings an ignored group back.
+    pub fn unignore_alike(&self, id: &str) -> Result<()> {
+        let now = now_utc();
+        self.conn.execute("UPDATE alike_ignored SET deleted_at = ?2, updated_at = ?2 WHERE id = ?1 AND deleted_at IS NULL", params![id, now])?;
+        Ok(())
+    }
+
     /// Book details' "Include in Find alike": lets the book back into every group.
     pub fn include_in_alike(&self, book_id: &str) -> Result<()> {
         self.conn.execute("DELETE FROM metadata_overrides WHERE book_id = ?1 AND field = ?2", params![book_id, KEPT_OUT])?;
         Ok(())
+    }
+}
+
+fn kind_name(kind: ItemKind) -> &'static str {
+    match kind {
+        ItemKind::Books => "books",
+        ItemKind::Documents => "documents",
+        ItemKind::Audiobooks => "audiobooks",
     }
 }
 
@@ -455,6 +576,60 @@ mod tests {
             ImportResult::Imported { book_id, .. } => book_id,
             other => panic!("{other:?}"),
         }
+    }
+
+    #[test]
+    fn title_start_alone_keeps_two_authors_series_apart() {
+        let (dir, mut library) = open_temp_library();
+        let dd = add(&mut library, dir.path(), "Dungeon Diving 101", "Bruce Sentar");
+        let dd2 = add(&mut library, dir.path(), "Dungeon Diving 102", "Sentar, Bruce");
+        let loose = add(&mut library, dir.path(), "Dungeon Diving 103", "Bruce Sentar");
+        let cw = add(&mut library, dir.path(), "Dungeon Diving Culinary Wizard 1", "Landon Scott");
+        let cw2 = add(&mut library, dir.path(), "Dungeon Diving Culinary Wizard 2", "Landon Scott");
+        let cw3 = add(&mut library, dir.path(), "Dungeon Diving Culinary Wizard 3", "Landon Scott");
+        library.conn.execute("UPDATE books SET series = 'Dungeon Diving' WHERE id IN (?1, ?2)", params![dd, dd2]).unwrap();
+        library.conn.execute("UPDATE books SET series = 'Dungeon Diving Culinary Wizard' WHERE id IN (?1, ?2)", params![cw, cw2]).unwrap();
+        let options = AlikeOptions { match_by: vec!["title".into()], only: vec![] };
+        let groups = library.find_alike(ItemKind::Books, &options).unwrap();
+        let mut found: Vec<Vec<&str>> = groups
+            .iter()
+            .map(|g| {
+                let mut ids: Vec<&str> = g.books.iter().map(|b| b.book.id.as_str()).collect();
+                ids.sort_unstable();
+                ids
+            })
+            .collect();
+        found.sort();
+        let mut want = vec![vec![dd.as_str(), dd2.as_str(), loose.as_str()], vec![cw.as_str(), cw2.as_str(), cw3.as_str()]];
+        for w in &mut want {
+            w.sort_unstable();
+        }
+        want.sort();
+        assert_eq!(found, want);
+    }
+
+    #[test]
+    fn an_ignored_group_stays_hidden_until_its_time_or_brought_back() {
+        let (dir, mut library) = open_temp_library();
+        add(&mut library, dir.path(), "Star Wars: Heir", "A. C. Crispin");
+        add(&mut library, dir.path(), "Star Wars: Rogue", "A. C. Crispin");
+        let options = AlikeOptions { match_by: vec!["title".into()], only: vec![] };
+        let group = library.find_alike(ItemKind::Books, &options).unwrap().remove(0);
+        assert!(library.ignore_alike(ItemKind::Books, "Star Wars", "", &group.keys, Some(0.0)).is_err());
+        let ignored = library.ignore_alike(ItemKind::Books, &group.name, &group.author, &group.keys, Some(2.0)).unwrap();
+        assert!(library.find_alike(ItemKind::Books, &options).unwrap().is_empty());
+        assert_eq!(library.alike_ignored(ItemKind::Books).unwrap(), vec![ignored.clone()]);
+        assert!(library.alike_ignored(ItemKind::Audiobooks).unwrap().is_empty());
+        // Past its time: back on its own.
+        library.conn.execute("UPDATE alike_ignored SET until = '2000-01-01T00:00:00.000Z'", []).unwrap();
+        assert_eq!(library.find_alike(ItemKind::Books, &options).unwrap().len(), 1);
+        assert!(library.alike_ignored(ItemKind::Books).unwrap().is_empty());
+        // For good, until brought back.
+        let forever = library.ignore_alike(ItemKind::Books, &group.name, &group.author, &group.keys, None).unwrap();
+        assert_eq!(forever.until, None);
+        assert!(library.find_alike(ItemKind::Books, &options).unwrap().is_empty());
+        library.unignore_alike(&forever.id).unwrap();
+        assert_eq!(library.find_alike(ItemKind::Books, &options).unwrap().len(), 1);
     }
 
     #[test]

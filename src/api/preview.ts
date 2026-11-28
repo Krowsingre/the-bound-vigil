@@ -19,6 +19,8 @@ import { previewWriting } from "../preview/writing";
 import { previewKindle } from "../preview/kindle";
 import { browseStub } from "../preview/browse";
 import type {
+  AlikeIgnored,
+  ItemKind,
   DeviceUnlockKind,
   HiddenLock,
   BookLocation,
@@ -413,6 +415,8 @@ let hiddenLockSample: HiddenLock | null = null;
 const unlockSample = params.get("unlock") as DeviceUnlockKind | null;
 /** Find alike: the groups each book is kept out of. */
 const alikeOut = new Map<string, Set<string>>();
+let alikeIgnored: (AlikeIgnored & { kind: ItemKind })[] = [];
+const ignoredNow = (kind: ItemKind) => alikeIgnored.filter((g) => g.kind === kind && (!g.until || g.until > new Date().toISOString()));
 const library = () => (empty ? [] : books.filter((b) => !hiddenIds.has(b.id)));
 const collections = previewCollections(library, empty);
 let annotations: Annotation[] = empty ? [] : sampleAnnotations(books);
@@ -1279,6 +1283,7 @@ export function previewApi(): Api {
         const keys = [`${author.toLowerCase()}|alike`];
         const shown = list.filter((b) => !keys.some((k) => alikeOut.get(b.id)?.has(k)));
         if (shown.length < 2 || !shown.some((b) => !b.series) || !shown.some((b) => b.series)) return [];
+        if (ignoredNow(kind).some((g) => g.keys.some((k) => keys.includes(k)))) return [];
         const seen = new Map<string, string>();
         return [{
           keys,
@@ -1304,6 +1309,14 @@ export function previewApi(): Api {
     keptOutOfAlike: async (bookId) => alikeOut.has(bookId),
     keptOutBooks: async () => library().filter((b) => alikeOut.has(b.id)),
     includeInAlike: async (bookId) => void alikeOut.delete(bookId),
+    ignoreAlike: async (kind, name, author, keys, hours) => {
+      const until = hours == null ? null : new Date(Date.now() + hours * 3_600_000).toISOString();
+      const ignored = { id: `ignored-${Date.now()}`, name, author, keys, until };
+      alikeIgnored = [...alikeIgnored, { ...ignored, kind }];
+      return ignored;
+    },
+    alikeIgnored: async (kind) => ignoredNow(kind).map(({ kind: _, ...g }) => g),
+    unignoreAlike: async (id) => void (alikeIgnored = alikeIgnored.filter((g) => g.id !== id)),
     seriesListOnline: async (name) => {
       if (name !== "Sherlock Holmes") throw new Error(`No list of the books in ${name} was found online.`);
       const titles = ["A Study in Scarlet", "The Sign of the Four", "The Adventures of Sherlock Holmes", "The Memoirs of Sherlock Holmes", "The Hound of the Baskervilles",

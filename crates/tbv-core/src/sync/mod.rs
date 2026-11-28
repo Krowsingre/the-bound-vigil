@@ -454,6 +454,14 @@ pub(crate) const KINDS: &[Kind] = &[
         creates: true,
     },
     Kind {
+        name: "alike_ignored",
+        table: "alike_ignored",
+        keys: &["id"],
+        cols: &["kind", "name", "author", "keys", "until", "created_at", "updated_at", "deleted_at"],
+        category: Category::Library,
+        creates: true,
+    },
+    Kind {
         name: "time_log",
         table: "time_log",
         keys: &["device_id", "day", "kind"],
@@ -1830,6 +1838,7 @@ impl Library {
             "quick_link" => named("Quick link", text("title")),
             "sanctum_link" => named("Sanctum link", text("title")),
             "custom_theme" => named(if gone { "Theme removed" } else { "Theme" }, text("name")),
+            "alike_ignored" => named(if gone { "Find alike group back" } else { "Find alike group ignored" }, text("name")),
             "time_log" => "Time read and listened".into(),
             other => other.replace('_', " "),
         }
@@ -2102,6 +2111,7 @@ impl Library {
             "quick_link" => format!("The Quick Link {}", field("title").unwrap_or_default()),
             "sanctum_link" => format!("The Sanctum link {}", field("title").unwrap_or_default()),
             "custom_theme" => format!("The theme {}", field("name").unwrap_or_default()),
+            "alike_ignored" => format!("The ignored Find alike group {}", field("name").unwrap_or_default()),
             "browser_history" => format!("A page in Discover's history: {}", field("title").filter(|t| !t.is_empty()).or_else(|| field("url")).unwrap_or_default()),
             "browser_device_tabs" => "The Discover tabs open on a device".into(),
             "browser_session" => format!("The Discover session {}", field("name").unwrap_or_default()),
@@ -2669,6 +2679,7 @@ fn summarize(kind: &Kind, data: Option<&Map<String, Value>>) -> String {
         "quick_link" => if data.get("deleted_at").is_some_and(|v| !v.is_null()) { "Quick Link removed".into() } else { short(text("url")) },
         "sanctum_link" => if data.get("deleted_at").is_some_and(|v| !v.is_null()) { "Sanctum link removed".into() } else { short(text("target")) },
         "custom_theme" => if data.get("deleted_at").is_some_and(|v| !v.is_null()) { "Theme removed".into() } else { short(text("name")) },
+        "alike_ignored" => if data.get("deleted_at").is_some_and(|v| !v.is_null()) { "Brought back".into() } else { short(text("name")) },
         "browser_history" => if data.get("deleted_at").is_some_and(|v| !v.is_null()) { "Taken off Discover's history".into() } else { short(text("url")) },
         "browser_session" => if data.get("deleted_at").is_some_and(|v| !v.is_null()) { "Session removed".into() } else { short(text("name")) },
         "browser_device_tabs" => {

@@ -2,6 +2,7 @@
 // books and audiobooks in from, over FTP, FTPS, SFTP or WebDAV.
 
 import { useCallback, useEffect, useState } from "react";
+import { useRangePick, withShift } from "../lib/rangePick";
 import { api, isApp } from "../api";
 import { NO_SERVER_QUEUE, SERVERS_DESKTOP_ONLY } from "../api/serverStub";
 import type { RemoteEntry, ServerInput, ServerQueueView, ServerListing, ServerProtocol, ServerView } from "../api/types";
@@ -501,13 +502,18 @@ function BrowseDialog({
   );
   useEffect(() => open(null), [open]);
 
-  const toggle = (entry: RemoteEntry) =>
-    setChosen((c) => {
-      const next = new Map(c);
-      if (next.has(entry.path)) next.delete(entry.path);
-      else next.set(entry.path, entry);
-      return next;
-    });
+  const pickRange = useRangePick();
+  // Shift picks every entry from the one chosen last, as listed.
+  const toggle = (entry: RemoteEntry, shift = false) => {
+    const entries = listing?.entries ?? [];
+    const paths = pickRange(new Set(chosen.keys()), entries.map((e) => e.path), entry.path, shift);
+    const next = new Map<string, RemoteEntry>();
+    for (const path of paths) {
+      const found = chosen.get(path) ?? entries.find((e) => e.path === path);
+      if (found) next.set(path, found);
+    }
+    setChosen(next);
+  };
   const up = listing ? parentOf(listing.path) : null;
   const start = async () => {
     setStarting(true);
@@ -551,7 +557,7 @@ function BrowseDialog({
               {listing?.entries.map((entry) => (
                 <li key={entry.path} className={chosen.has(entry.path) ? "is-chosen" : undefined}>
                   <label className="browse-check">
-                    <input type="checkbox" checked={chosen.has(entry.path)} onChange={() => toggle(entry)} aria-label={`Choose ${entry.name}`} />
+                    <input type="checkbox" checked={chosen.has(entry.path)} onChange={(e) => toggle(entry, withShift(e))} aria-label={`Choose ${entry.name}`} />
                   </label>
                   {entry.isDir ? (
                     <button type="button" className="browse-entry" onClick={() => open(entry.path)}>
@@ -560,7 +566,7 @@ function BrowseDialog({
                       <Icon name="chevronRight" size={16} />
                     </button>
                   ) : (
-                    <button type="button" className="browse-entry" onClick={() => toggle(entry)}>
+                    <button type="button" className="browse-entry" onMouseDown={(e) => e.shiftKey && e.preventDefault()} onClick={(e) => toggle(entry, e.shiftKey)}>
                       <Icon name={/\.(mp3|m4a|m4b|aac|ogg|opus|flac|wav)$/i.test(entry.name) ? "headphones" : "file"} size={18} />
                       <span className="browse-name">{entry.name}</span>
                       <span className="browse-size">{formatBytes(entry.size)}</span>

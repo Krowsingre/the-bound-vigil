@@ -7,11 +7,13 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../api";
-import type { AlikeBook, AlikeField, AlikeGroup, AlikeOptions, BookPreview, DetailChange, ItemKind, SeriesEntry } from "../api/types";
+import type { AlikeBook, AlikeField, AlikeGroup, AlikeIgnored, AlikeOptions, BookPreview, DetailChange, ItemKind, SeriesEntry } from "../api/types";
 import { BookCover } from "../components/BookCover";
 import { Icon } from "../components/Icon";
 import { Menu } from "../components/Menu";
 import { useToast } from "../components/Toast";
+import { rowPick, useRangePick, withShift } from "../lib/rangePick";
+import { useNarrow } from "../lib/useNarrow";
 
 /** A title as it compares with a list found online: no subtitle, case, punctuation or leading article. */
 export function titleKey(title: string): string {
@@ -78,6 +80,8 @@ export function FindAlike({ kind, from = [], onClose, onChanged }: { kind: ItemK
   const [open, setOpen] = useState<string[] | null>(null);
   const [keptOut, setKeptOut] = useState<BookPreview[] | null>(null);
   const [showKeptOut, setShowKeptOut] = useState(false);
+  const [ignored, setIgnored] = useState<AlikeIgnored[]>([]);
+  const [showIgnored, setShowIgnored] = useState(false);
   // "Not in this group": left out until Find alike runs again, by group and book.
   const [notHere, setNotHere] = useState<Set<string>>(new Set());
   const [reload, setReload] = useState(0);
@@ -104,6 +108,7 @@ export function FindAlike({ kind, from = [], onClose, onChanged }: { kind: ItemK
       (e: unknown) => current && setError(String(e)),
     );
     void api.keptOutBooks?.(kind).then((found) => current && setKeptOut(found), () => current && setKeptOut([]));
+    void api.alikeIgnored?.(kind).then((found) => current && setIgnored(found), () => current && setIgnored([]));
     return () => {
       current = false;
     };
@@ -144,7 +149,22 @@ export function FindAlike({ kind, from = [], onClose, onChanged }: { kind: ItemK
               }
             }}
             onChanged={again}
+            onIgnore={api.ignoreAlike ? async (hours) => {
+              try {
+                const made = await api.ignoreAlike!(kind, group.name, group.author, group.keys, hours);
+                setOpen(null);
+                again();
+                toast(`“${group.name}” is ignored.`, { label: "Undo", run: () => void api.unignoreAlike?.(made.id).then(again) });
+              } catch (e) {
+                toast(String(e));
+              }
+            } : undefined}
           />
+        ) : showIgnored ? (
+          <Ignored list={ignored} onBack={() => setShowIgnored(false)} onBringBack={async (g) => {
+            await api.unignoreAlike?.(g.id);
+            again();
+          }} />
         ) : showKeptOut ? (
           <KeptOut books={keptOut ?? []} onBack={() => setShowKeptOut(false)} onLetIn={async (book) => {
             await api.includeInAlike?.(book.id);
@@ -212,6 +232,11 @@ export function FindAlike({ kind, from = [], onClose, onChanged }: { kind: ItemK
               </>
             )}
             <div className="dialog-actions">
+              {!!ignored.length && (
+                <button type="button" className="btn btn-quiet" onClick={() => setShowIgnored(true)}>
+                  Ignored ({ignored.length})
+                </button>
+              )}
               {!!keptOut?.length && (
                 <button type="button" className="btn btn-quiet" onClick={() => setShowKeptOut(true)}>
                   Kept out ({keptOut.length})
@@ -297,14 +322,64 @@ function KeptOut({ books: list, onBack, onLetIn }: { books: BookPreview[]; onBac
   );
 }
 
+/** When an ignored group comes back: its day and time, or never. */
+function untilText(until: string | null): string {
+  if (!until) return "Forever";
+  const at = new Date(until);
+  return `Until ${at.toLocaleDateString(undefined, { month: "short", day: "numeric" })}, ${at.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}`;
+}
+
+function Ignored({ list, onBack, onBringBack }: { list: AlikeIgnored[]; onBack: () => void; onBringBack: (g: AlikeIgnored) => Promise<void> }) {
+  return (
+    <>
+      <button type="button" className="back-link" onClick={onBack}><Icon name="chevronLeft" size={14} /> All groups</button>
+      <h2>Ignored</h2>
+      {list.length === 0 ? (
+        <p className="muted">No groups are ignored.</p>
+      ) : (
+        <ul className="alike-books">
+          {list.map((g) => (
+            <li key={g.id} className="duplicate-book">
+              <span className="duplicate-text">
+                <strong>{g.name}</strong>
+                <span className="muted">{[g.author, untilText(g.until)].filter(Boolean).join(" · ")}</span>
+              </span>
+              <button type="button" className="btn btn-quiet btn-small" onClick={() => void onBringBack(g)}>Bring back</button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </>
+  );
+}
+
+/** How long to ignore a group: hours typed in, a day, a week, a month, or for good. */
+function IgnoreFor({ onIgnore }: { onIgnore: (hours: number | null) => void }) {
+  const [hours, setHours] = useState("");
+  const typed = Number(hours.replace(",", "."));
+  const ok = hours.trim() !== "" && Number.isFinite(typed) && typed > 0;
+  return (
+    <div className="alike-ignore" role="group" aria-label="Ignore for">
+      <input inputMode="decimal" placeholder="Hours" aria-label="Hours" value={hours} onChange={(e) => setHours(e.target.value)}
+        onKeyDown={(e) => e.key === "Enter" && ok && onIgnore(typed)} />
+      <button type="button" className="btn btn-quiet btn-small" disabled={!ok} onClick={() => onIgnore(typed)}>Hours</button>
+      <button type="button" className="btn btn-quiet btn-small" onClick={() => onIgnore(24)}>Day</button>
+      <button type="button" className="btn btn-quiet btn-small" onClick={() => onIgnore(24 * 7)}>Week</button>
+      <button type="button" className="btn btn-quiet btn-small" onClick={() => onIgnore(24 * 30)}>Month</button>
+      <button type="button" className="btn btn-quiet btn-small" onClick={() => onIgnore(null)}>Forever</button>
+    </div>
+  );
+}
+
 type Online = { state: "idle" } | { state: "looking" } | { state: "found"; entries: SeriesEntry[] } | { state: "failed"; reason: string };
 
-function GroupView({ group, onBack, onNotHere, onKeepOut, onChanged }: {
+function GroupView({ group, onBack, onNotHere, onKeepOut, onChanged, onIgnore }: {
   group: AlikeGroup;
   onBack: () => void;
   onNotHere: (bookId: string) => void;
   onKeepOut: (book: BookPreview) => Promise<void>;
   onChanged: () => void;
+  onIgnore?: (hours: number | null) => Promise<void>;
 }) {
   const toast = useToast();
   const loose = group.books.filter((b) => !b.book.series?.trim());
@@ -334,12 +409,21 @@ function GroupView({ group, onBack, onNotHere, onKeepOut, onChanged }: {
   const notHereOnline = found.filter((e) => !group.books.some((b) => titleKey(b.book.title) === titleKey(e.title)));
   // Books already in a series can be chosen too, so a group split across series can be joined.
   const chosenBooks = group.books.filter((b) => chosen.has(b.book.id));
-  const choose = (id: string) => (on: boolean) => setChosen((s) => {
+  // Shift picks a range, in the order the books are shown.
+  const order = [...stacks.flatMap((s) => s.books), ...loose].map((b) => b.book.id);
+  const pickRange = useRangePick();
+  const choose = (id: string) => (shift: boolean) => setChosen(pickRange(chosen, order, id, shift));
+  // Series folded to their header line.
+  const [folded, setFolded] = useState<Set<string>>(new Set());
+  const fold = (name: string) => setFolded((s) => {
     const next = new Set(s);
-    if (on) next.add(id);
-    else next.delete(id);
+    if (next.has(name)) next.delete(name);
+    else next.add(name);
     return next;
   });
+  const [ignoring, setIgnoring] = useState(false);
+  // Computers: series on the left and books in no series on the right, each scrolling on its own.
+  const two = !useNarrow() && stacks.length > 0 && loose.length > 0;
   const pairs = chosenBooks.filter((b) => b.pairedAudio);
 
   const lookUp = async () => {
@@ -407,7 +491,15 @@ function GroupView({ group, onBack, onNotHere, onKeepOut, onChanged }: {
   return (
     <>
       <button type="button" className="back-link" onClick={onBack}><Icon name="chevronLeft" size={14} /> All groups</button>
-      <h2>{group.name}</h2>
+      <div className="alike-head">
+        <h2>{group.name}</h2>
+        {onIgnore && (
+          <button type="button" className={`btn btn-quiet btn-small${ignoring ? " is-lit" : ""}`} aria-expanded={ignoring} onClick={() => setIgnoring((o) => !o)}>
+            <Icon name="eyeOff" size={14} /> Ignore
+          </button>
+        )}
+      </div>
+      {ignoring && onIgnore && <IgnoreFor onIgnore={(hours) => void onIgnore(hours)} />}
       <p className="muted">{group.author} · {books(group.books.length)}</p>
 
       <div className="alike-online">
@@ -441,12 +533,17 @@ function GroupView({ group, onBack, onNotHere, onKeepOut, onChanged }: {
         )}
       </div>
 
-      <div className="alike-body">
+      <div className={`alike-body${two ? " alike-two" : ""}`}>
+        <div className="alike-col">
         {stacks.map((stack) => {
           const gaps = gapsIn(stack.books.map((b) => b.book.seriesIndex ?? NaN));
           return (
-            <section key={stack.name} className="duplicate-group alike-stack">
+            <section key={stack.name} className={`duplicate-group alike-stack${folded.has(stack.name) ? " is-folded" : ""}`}>
               <header>
+                <button type="button" className="icon-btn icon-btn-s alike-fold" aria-expanded={!folded.has(stack.name)}
+                  aria-label={folded.has(stack.name) ? `Open ${stack.name}` : `Fold ${stack.name}`} onClick={() => fold(stack.name)}>
+                  <Icon name={folded.has(stack.name) ? "chevronRight" : "chevronDown"} size={14} />
+                </button>
                 <span>
                   <strong>{stack.name}</strong> · {books(stack.books.length)}
                   {gaps.length > 0 && <span className="alike-gaps"> · Missing {gaps.length === 1 ? "book" : "books"} {gaps.join(", ")}</span>}
@@ -455,7 +552,7 @@ function GroupView({ group, onBack, onNotHere, onKeepOut, onChanged }: {
                   Add chosen here
                 </button>
               </header>
-              <ul>
+              {!folded.has(stack.name) && <ul>
                 {stack.books.map((b) => (
                   <BookRow
                     key={b.book.id}
@@ -469,11 +566,13 @@ function GroupView({ group, onBack, onNotHere, onKeepOut, onChanged }: {
                     onKeepOut={onKeepOut}
                   />
                 ))}
-              </ul>
+              </ul>}
             </section>
           );
         })}
+        </div>
         {loose.length > 0 && (
+        <div className="alike-col">
           <section className="duplicate-group">
             <header>
               <span><strong>Not in a series</strong> · {books(loose.length)}</span>
@@ -507,6 +606,7 @@ function GroupView({ group, onBack, onNotHere, onKeepOut, onChanged }: {
               ))}
             </ul>
           </section>
+        </div>
         )}
         {notHereOnline.length > 0 && (
           <p className="muted alike-missing">
@@ -541,7 +641,8 @@ function BookRow({ item, titleOf, chosen, onChoose, number, onNumber, online, on
   item: AlikeBook;
   titleOf: (id: string) => string;
   chosen?: boolean;
-  onChoose?: (on: boolean) => void;
+  /** Flips the book, or with Shift picks every book from the last one picked. */
+  onChoose?: (shift: boolean) => void;
   number: string;
   onNumber?: (n: string) => void;
   online?: number | null;
@@ -550,9 +651,9 @@ function BookRow({ item, titleOf, chosen, onChoose, number, onNumber, online, on
 }) {
   const { book } = item;
   return (
-    <li className={`duplicate-book alike-book${chosen ? " is-chosen" : ""}`}>
+    <li className={`duplicate-book alike-book${chosen ? " is-chosen" : ""}${onChoose ? " is-pickable" : ""}`} {...(onChoose ? rowPick(onChoose) : {})}>
       {onChoose && (
-        <input type="checkbox" aria-label={`Choose ${book.title}`} checked={!!chosen} onChange={(e) => onChoose(e.target.checked)} />
+        <input type="checkbox" aria-label={`Choose ${book.title}`} checked={!!chosen} onChange={(e) => onChoose(withShift(e))} />
       )}
       <BookCover book={book} size="s" />
       <span className="duplicate-text">

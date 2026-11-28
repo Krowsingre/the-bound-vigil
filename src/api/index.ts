@@ -17,6 +17,7 @@ import type {
   ItemKind,
   AudioType,
   AlikeGroup,
+  AlikeIgnored,
   AlikeOptions,
   SeriesEntry,
   BookPreview,
@@ -150,6 +151,12 @@ export interface Api {
   keptOutBooks?(kind: ItemKind): Promise<BookPreview[]>;
   /** Book details' "Include in Find alike": back into every group. */
   includeInAlike?(bookId: string): Promise<void>;
+  /** Hides a Find alike group for some hours, or for good (`hours` null). */
+  ignoreAlike?(kind: ItemKind, name: string, author: string, keys: string[], hours: number | null): Promise<AlikeIgnored>;
+  /** The groups of one kind ignored now. */
+  alikeIgnored?(kind: ItemKind): Promise<AlikeIgnored[]>;
+  /** Brings an ignored group back. */
+  unignoreAlike?(id: string): Promise<void>;
   /** A series' books as listed online, for suggestions only (nothing is kept). */
   seriesListOnline?(name: string, author: string): Promise<SeriesEntry[]>;
   /** "Add anyway" for a book the import skipped as deleted before: the same file, queued again. */
@@ -976,6 +983,9 @@ function appApi(): Api {
     keptOutOfAlike: async (bookId) => (await core).invoke<boolean>("kept_out_of_alike", { bookId }),
     keptOutBooks: async (kind) => (await core).invoke<BookPreview[]>("kept_out_books", { kind }),
     includeInAlike: async (bookId) => (await core).invoke("include_in_alike", { bookId }),
+    ignoreAlike: async (kind, name, author, keys, hours) => (await core).invoke<AlikeIgnored>("ignore_alike", { kind, name, author, keys, hours }),
+    alikeIgnored: async (kind) => (await core).invoke<AlikeIgnored[]>("alike_ignored", { kind }),
+    unignoreAlike: async (id) => (await core).invoke("unignore_alike", { id }),
     seriesListOnline: async (name, author) => (await core).invoke<SeriesEntry[]>("series_list_online", { name, author }),
     importAgain: async (id) => (await core).invoke<boolean>("import_again", { id }),
     importQueue: async () => (await core).invoke<ImportsView>("import_queue"),

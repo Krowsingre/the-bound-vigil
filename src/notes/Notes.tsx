@@ -10,6 +10,7 @@ import type { HighlightColor, NoteItem, NoteKind, NotesPage, NotesQuery, NotesSo
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { Icon } from "../components/Icon";
 import { Menu, type MenuEntry } from "../components/Menu";
+import { useRangePick } from "../lib/rangePick";
 import { useToast } from "../components/Toast";
 import { HIGHLIGHT_COLORS } from "../reader/settings";
 import { NoteToBookDialog } from "../writing/NoteToBookDialog";
@@ -343,7 +344,8 @@ export function Notes({
   ];
 
   // Choosing several, or opening one.
-  const onCard = (n: NoteItem) => {
+  const pickRange = useRangePick();
+  const onCard = (n: NoteItem, shift = false) => {
     if (!chosen) {
       if (n.kind === "personal") {
         setSelectedId(null);
@@ -351,12 +353,7 @@ export function Notes({
       } else setSelectedId((id) => (id === n.id ? null : n.id));
       return;
     }
-    setChosen((c) => {
-      const next = new Set(c);
-      if (next.has(n.id)) next.delete(n.id);
-      else next.add(n.id);
-      return next;
-    });
+    setChosen(pickRange(chosen, notes.map((x) => x.id), n.id, shift));
   };
   const chosenNotes = notes.filter((n) => chosen?.has(n.id));
 

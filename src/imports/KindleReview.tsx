@@ -10,6 +10,7 @@ import { api } from "../api";
 import type { KindleImport, KindleMatch, KindleReview } from "../api/types";
 import { Icon } from "../components/Icon";
 import { useToast } from "../components/Toast";
+import { useRangePick, withShift } from "../lib/rangePick";
 
 const books = (n: number) => `${n.toLocaleString()} ${n === 1 ? "book" : "books"}`;
 const byLine = (title: string, authors: string | string[]) => {
@@ -26,6 +27,7 @@ export const isKindleList = (path: string) => /\.json$/i.test(path);
 export function KindleReviewDialog({ review, imported, onClose }: { review: KindleReview; imported: KindleImport | null; onClose: (applied: boolean) => void }) {
   const toast = useToast();
   const [yes, setYes] = useState<Set<string>>(new Set());
+  const pickRange = useRangePick();
   const [markRead, setMarkRead] = useState(review.markRead);
   const [busy, setBusy] = useState(false);
   const first = useRef<HTMLButtonElement>(null);
@@ -98,12 +100,7 @@ export function KindleReviewDialog({ review, imported, onClose }: { review: Kind
                       key={p.asin}
                       match={p}
                       checked={yes.has(p.asin)}
-                      onChange={(on) => {
-                        const next = new Set(yes);
-                        if (on) next.add(p.asin);
-                        else next.delete(p.asin);
-                        setYes(next);
-                      }}
+                      onChange={(shift) => setYes(pickRange(yes, review.probable.map((x) => x.asin), p.asin, shift))}
                     />
                   ))}
                 </ul>
@@ -145,11 +142,11 @@ export function KindleReviewDialog({ review, imported, onClose }: { review: Kind
   );
 }
 
-function ProbableRow({ match, checked, onChange }: { match: KindleMatch; checked: boolean; onChange: (on: boolean) => void }) {
+function ProbableRow({ match, checked, onChange }: { match: KindleMatch; checked: boolean; onChange: (shift: boolean) => void }) {
   return (
     <li>
       <label>
-        <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} />
+        <input type="checkbox" checked={checked} onChange={(e) => onChange(withShift(e))} />
         <span>
           <span className="kindle-probable-kindle">
             <span className="kindle-label">Kindle</span> {byLine(match.title, match.author)}

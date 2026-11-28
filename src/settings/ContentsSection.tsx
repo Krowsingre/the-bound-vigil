@@ -9,6 +9,7 @@ import type { StoredFile, SyncOverview, TidyProgress } from "../api/types";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { ProgressBar } from "../components/ProgressBar";
 import { useToast } from "../components/Toast";
+import { useRangePick, withShift } from "../lib/rangePick";
 import { Section } from "./controls";
 import { size } from "./UsageSection";
 
@@ -86,6 +87,7 @@ export function ContentsSection({ overview }: { overview: SyncOverview }) {
       return next;
     });
 
+  const pickRange = useRangePick();
   const picked = (files ?? []).filter((f) => chosen.has(f.path));
   const remove = async () => {
     setConfirming(false);
@@ -128,7 +130,8 @@ export function ContentsSection({ overview }: { overview: SyncOverview }) {
             onChange={(e) => setSearch(e.target.value)}
           />
           {groups.length === 0 && <p className="settings-row-hint">{files.length ? "Nothing matches." : "Supabase holds no files from TBV."}</p>}
-          {groups.map((g) => {
+          {groups.map((g, _, list) => {
+            const order = list.flatMap((x) => x.files.slice(0, shown[x.kind] ?? PAGE)).map((f) => f.path);
             const all = g.files.every((f) => chosen.has(f.path));
             const limit = shown[g.kind] ?? PAGE;
             return (
@@ -150,7 +153,7 @@ export function ContentsSection({ overview }: { overview: SyncOverview }) {
                   {g.files.slice(0, limit).map((f) => (
                     <li key={f.path}>
                       <label>
-                        <input type="checkbox" checked={chosen.has(f.path)} onChange={(e) => toggle([f.path], e.target.checked)} />
+                        <input type="checkbox" checked={chosen.has(f.path)} onChange={(e) => setChosen(pickRange(chosen, order, f.path, withShift(e)))} />
                         <span className="contents-name" title={f.path}>
                           {nameOf(f)}
                         </span>

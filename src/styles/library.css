@@ -994,6 +994,62 @@ button.tag-chip-add:hover {
   min-height: 0;
 }
 
+.alike-col {
+  display: grid;
+  gap: 14px;
+  align-content: start;
+  min-width: 0;
+}
+
+/* Computers (embre, 28 November): series on the left, books in no series
+   on the right, each column scrolling on its own. */
+.alike-dialog:has(.alike-two) {
+  width: min(1180px, calc(100vw - 32px));
+}
+
+.alike-body.alike-two {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  overflow: hidden;
+}
+
+.alike-two > .alike-col {
+  overflow-y: auto;
+  min-height: 0;
+  padding-right: 4px;
+}
+
+.alike-stack header .alike-fold {
+  flex: 0 0 auto;
+  margin-left: -8px;
+}
+
+.alike-stack.is-folded header {
+  border-bottom: 0;
+}
+
+.alike-book.is-pickable {
+  cursor: pointer;
+}
+
+.alike-ignore {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 8px 0 0;
+}
+
+.alike-ignore input {
+  width: 72px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
+  background: var(--bg);
+  color: inherit;
+  font: inherit;
+}
+
 .alike-gaps {
   color: var(--danger);
 }

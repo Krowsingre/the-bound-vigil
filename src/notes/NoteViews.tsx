@@ -12,7 +12,8 @@ type Props = {
   notes: NoteItem[];
   selectedId: string | null;
   menuFor: (n: NoteItem) => MenuEntry[];
-  onSelect: (n: NoteItem) => void;
+  /** Shift: every note from the one chosen last (while choosing several). */
+  onSelect: (n: NoteItem, shift?: boolean) => void;
   onOpen: (n: NoteItem) => void;
   /** While choosing several: the ones chosen. A click then chooses instead of opening. */
   chosen?: Set<string> | null;
@@ -112,7 +113,7 @@ export function NoteList({ notes, selectedId, menuFor, onSelect, onOpen, chosen 
       {notes.map((n) => (
         <li key={n.id} className={`note-row${n.id === selectedId ? " is-selected" : ""}${chosen?.has(n.id) ? " is-chosen" : ""}`} style={{ ["--strip" as string]: stripOf(n) }}>
           {chosen && <Chosen on={chosen.has(n.id)} />}
-          <button type="button" className="note-row-open" onClick={() => onSelect(n)} onDoubleClick={() => !chosen && onOpen(n)} aria-pressed={chosen ? chosen.has(n.id) : n.id === selectedId}>
+          <button type="button" className="note-row-open" onClick={(e) => onSelect(n, e.shiftKey)} onMouseDown={(e) => chosen && e.shiftKey && e.preventDefault()} onDoubleClick={() => !chosen && onOpen(n)} aria-pressed={chosen ? chosen.has(n.id) : n.id === selectedId}>
             <NoteArt note={n} size="s" />
             <span className="note-row-text">
               <span className="note-row-head">
@@ -152,7 +153,7 @@ export function NoteCards({ notes, selectedId, menuFor, onSelect, onOpen, chosen
             <button
               type="button"
               className="note-card-open"
-              onClick={() => onSelect(n)}
+              onClick={(e) => onSelect(n, e.shiftKey)} onMouseDown={(e) => chosen && e.shiftKey && e.preventDefault()}
               onDoubleClick={() => !chosen && onOpen(n)}
               aria-pressed={chosen ? on : n.id === selectedId}
             >
@@ -208,7 +209,7 @@ export function NoteTable({ notes, selectedId, menuFor, onSelect, onOpen, chosen
             <tr
               key={n.id}
               className={chosen?.has(n.id) || n.id === selectedId ? "is-selected" : undefined}
-              onClick={() => onSelect(n)}
+              onClick={(e) => onSelect(n, e.shiftKey)} onMouseDown={(e) => chosen && e.shiftKey && e.preventDefault()}
               onDoubleClick={() => !chosen && onOpen(n)}
               aria-selected={chosen ? chosen.has(n.id) : n.id === selectedId}
             >

@@ -694,6 +694,15 @@ export interface AlikeOptions {
   only: { field: AlikeField; value: string }[];
 }
 
+/** A Find alike group set aside, until a time or for good (`until` null). */
+export interface AlikeIgnored {
+  id: string;
+  name: string;
+  author: string;
+  keys: string[];
+  until: string | null;
+}
+
 /** Find alike: books by one author with alike titles, and the series they're in. */
 export interface AlikeGroup {
   /** Every key the group was found by; keeping a book out stores them. */

@@ -44,3 +44,25 @@ pub async fn series_list_online(state: State<'_, AppLibrary>, name: String, auth
         .map_err(|e| e.to_string())?
         .map_err(|e| e.to_string())
 }
+
+#[tauri::command]
+pub async fn ignore_alike(
+    state: State<'_, AppLibrary>,
+    kind: tbv_core::model::ItemKind,
+    name: String,
+    author: String,
+    keys: Vec<String>,
+    hours: Option<f64>,
+) -> CommandResult<tbv_core::alike::AlikeIgnored> {
+    with_library(state, move |library| library.ignore_alike(kind, &name, &author, &keys, hours)).await
+}
+
+#[tauri::command]
+pub async fn alike_ignored(state: State<'_, AppLibrary>, kind: tbv_core::model::ItemKind) -> CommandResult<Vec<tbv_core::alike::AlikeIgnored>> {
+    with_library(state, move |library| library.alike_ignored(kind)).await
+}
+
+#[tauri::command]
+pub async fn unignore_alike(state: State<'_, AppLibrary>, id: String) -> CommandResult<()> {
+    with_library(state, move |library| library.unignore_alike(&id)).await
+}

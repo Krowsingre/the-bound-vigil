@@ -5,6 +5,7 @@
 
 import { AuthorLabel } from "./AuthorInfo";
 import { useEffect, useState } from "react";
+import { useRangePick, withShift } from "../lib/rangePick";
 import { api } from "../api";
 import type { WritingChapter, WritingProject } from "../api/types";
 import { Icon } from "../components/Icon";
@@ -68,7 +69,12 @@ export function BoxSetDialog({ onCreated, onCancel }: { onCreated: (id: string) 
   const authors = [...new Set(picked.map((p) => p.author?.trim()).filter(Boolean))];
   const suggestedTitle = series ? `${series}: Books ${picked.map((p) => p.seriesIndex).filter((n) => n != null).join(", ") || `1 to ${picked.length}`}` : picked.length ? "Box set" : "";
 
-  const toggle = (id: string) => setChosen((list) => (list.includes(id) ? list.filter((x) => x !== id) : [...list, id]));
+  // Shift adds every book from the one ticked last, in the order shown, to the end.
+  const pickRange = useRangePick();
+  const toggle = (id: string, shift: boolean, shown: string[]) => {
+    const now = pickRange(new Set(chosen), shown, id, shift);
+    setChosen([...chosen.filter((x) => now.has(x)), ...shown.filter((x) => now.has(x) && !chosen.includes(x))]);
+  };
   const move = (id: string, by: -1 | 1) =>
     setChosen((list) => {
       const i = list.indexOf(id);
@@ -129,12 +135,12 @@ export function BoxSetDialog({ onCreated, onCancel }: { onCreated: (id: string) 
           <p className="muted">A box set needs at least two books written in Scribe.</p>
         ) : (
           <ol className="box-set-books">
-            {[...picked, ...projects.filter((p) => !chosen.includes(p.id))].map((p) => {
+            {[...picked, ...projects.filter((p) => !chosen.includes(p.id))].map((p, _, shown) => {
               const at = chosen.indexOf(p.id);
               return (
                 <li key={p.id} className={at >= 0 ? "is-chosen" : undefined}>
                   <label className="check-row">
-                    <input type="checkbox" checked={at >= 0} onChange={() => toggle(p.id)} />
+                    <input type="checkbox" checked={at >= 0} onChange={(e) => toggle(p.id, withShift(e), shown.map((x) => x.id))} />
                     <span className="box-set-book">
                       {at >= 0 && <b className="box-set-number">{at + 1}</b>}
                       <span>
