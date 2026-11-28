@@ -39,6 +39,7 @@ mod servers;
 mod shared;
 mod splash;
 mod stops;
+mod tray;
 #[cfg(windows)]
 mod windows_quit;
 mod sync;
@@ -2659,6 +2660,10 @@ pub fn run() {
             splash::startup_progress,
             splash::startup_done,
             splash::startup_painted,
+            splash::splash_finished,
+            tray::set_close_to_tray,
+            tray::set_start_with_windows,
+            tray::start_with_windows,
             sync_sign_in,
             sync_sign_out,
             set_supabase_project,
@@ -2732,6 +2737,11 @@ pub fn run() {
             }
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 api.prevent_close();
+                // Close to system tray (embre, 28 November): the window hides, and TBV keeps running.
+                if tray::hides_on_close() {
+                    let _ = window.hide();
+                    return;
+                }
                 #[cfg(windows)]
                 windows_quit::request(window);
                 #[cfg(not(windows))]

@@ -4,10 +4,10 @@
 
 import { authorName } from "../lib/authorNames";
 import { useCallback, useEffect, useState } from "react";
-import { api } from "../api";
+import { api, openExternal } from "../api";
 import type { BookPreview, CollectionSummary, SanctumLink } from "../api/types";
 import { askBrowser } from "../browse/browserAsk";
-import { addressFor, isAddress, readableAddress } from "../browse/browserPrefs";
+import { addressFor, isAddress, readableAddress, readBrowserPrefs } from "../browse/browserPrefs";
 import type { StartPanel } from "../browse/StartPage";
 import { GALLERY, galleryUrl } from "../collections/gallery";
 import { holdForMenu } from "../components/ContextMenu";
@@ -66,6 +66,8 @@ export function followLink(target: string, go: LinkGo) {
   if (target.startsWith("page:")) return go.onNavigate(target.slice(5) as Route);
   if (target.startsWith("book:")) return go.onOpenBook(target.slice(5));
   if (target.startsWith("collection:")) return go.onOpenCollection(target.slice(11));
+  // Attunement › Nexus › Open sigils: In default browser (embre, 28 November).
+  if (readBrowserPrefs().linksOpen === "browser" && /^https?:\/\//i.test(target)) return void openExternal(target);
   askBrowser({ url: target });
   go.onNavigate("catalogs");
 }

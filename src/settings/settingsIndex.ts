@@ -11,7 +11,9 @@ export type SettingsTab =
   | "collections"
   | "notes"
   | "browser"
+  | "security"
   | "sync"
+  | "storage"
   | "activity"
   | "files"
   | "ereaders"
@@ -91,6 +93,19 @@ export const SETTINGS_TABS: {
     lede: "Discover's start page, search engine, bar, downloads and site data.",
   },
   {
+    // Computer pages only (embre, 28 November): Discover's settings split in two, and Sync & Backup in three.
+    tab: "security",
+    label: "Web Security",
+    icon: "shield",
+    lede: "What Nexus blocks, the sites you've made choices for, site data and history.",
+  },
+  {
+    tab: "storage",
+    label: "Storage & Backup",
+    icon: "database",
+    lede: "Supabase's room, moving your library, and backing it up.",
+  },
+  {
     tab: "sync",
     label: "Sync & Backup",
     icon: "cloud",
@@ -141,6 +156,8 @@ export interface SettingsEntry {
   label: string;
   /** Other words people might search for. */
   words: string;
+  /** Only on a computer's pages. */
+  desk?: boolean;
 }
 
 export const SETTINGS_ENTRIES: SettingsEntry[] = [
@@ -310,61 +327,61 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     tab: "browser",
     section: "search",
     label: "Search engine",
-    words: "discover browser search engine duckduckgo google bing brave startpage ecosia web suggestions suggest autocomplete typing",
+    words: "nexus discover browser search engine duckduckgo google bing brave startpage ecosia web suggestions suggest autocomplete typing",
   },
   {
     tab: "browser",
     section: "home",
     label: "Discover home page",
-    words: "discover browser home page start page startpage quick links sigils recent sites gutenberg website address coming back tabs close reset last page",
+    words: "nexus discover browser home page start page startpage quick links sigils recent sites gutenberg website address coming back tabs close reset last page",
   },
   {
     tab: "browser",
     section: "history",
     label: "Discover history",
-    words: "discover browser history pages visited searches searched clear delete keep days privacy sync synced every device",
+    words: "nexus discover browser history pages visited searches searched clear delete keep days privacy sync synced every device",
   },
   {
     tab: "browser",
     section: "downloads",
     label: "Discover downloads",
-    words: "discover browser download downloads ebook add library automatically without asking",
+    words: "nexus discover browser download downloads ebook add library automatically without asking",
   },
   {
     tab: "browser",
     section: "playing",
     label: "Discover videos and sound",
-    words: "discover browser video videos sound music audio youtube background playing keep pause leave",
+    words: "nexus discover browser video videos sound music audio youtube background playing keep pause leave",
   },
   {
     tab: "browser",
     section: "typing",
     label: "Typing on sites",
-    words: "discover scry browser tab key autocomplete autofill suggestions fill in search box typing form forms remember saved entries clear",
+    words: "nexus discover scry browser tab key autocomplete autofill suggestions fill in search box typing form forms remember saved entries clear",
   },
   {
     tab: "browser",
     section: "protection",
     label: "Discover protection",
-    words: "discover browser protection trackers ads advertising block blocking strict balanced off privacy cookies lowered sites easylist easyprivacy malware scam pop-ups popups block lists",
+    words: "nexus discover browser protection trackers ads advertising block blocking strict balanced off privacy cookies lowered sites easylist easyprivacy malware scam pop-ups popups block lists",
   },
   {
     tab: "browser",
     section: "sitedata",
     label: "Discover site data",
-    words: "discover browser cookies site data clear logins signed in privacy start starting each time",
+    words: "nexus discover browser cookies site data clear logins signed in privacy start starting each time",
   },
   {
     tab: "browser",
     section: "sites",
     label: "Discover sites with their own settings",
-    words: "discover browser site sites settings zoom size text larger smaller desktop version mobile reset per-site",
+    words: "nexus discover browser site sites settings zoom size text larger smaller desktop version mobile reset per-site",
   },
   {
     tab: "browser",
     section: "apps",
     label: "Discover links for other apps",
-    words: "discover browser other apps mail email phone call links open ask before external",
+    words: "nexus discover browser other apps mail email phone call links open ask before external",
   },
   {
     tab: "profile",
@@ -474,6 +491,48 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     section: "vision",
     label: "Seeing and motion",
     words: "contrast focus ring underline links reduce motion animation transitions accessibility",
+  },
+  {
+    tab: "accessibility",
+    section: "windows",
+    label: "Start with Windows and close to system tray",
+    words: "windows start startup sign in login minimized tray system tray notification area close hide background quit",
+    desk: true,
+  },
+  {
+    tab: "browser",
+    section: "navigation",
+    label: "Nexus navigation",
+    words: "nexus discover browser previous tabs restore open sigils quick links new tab existing tab default browser external links ask",
+    desk: true,
+  },
+  {
+    tab: "browser",
+    section: "redirects",
+    label: "Trusted redirects",
+    words: "nexus discover browser redirect redirects trusted links tracking bounce",
+    desk: true,
+  },
+  {
+    tab: "sync",
+    section: "usage",
+    label: "Supabase storage",
+    words: "supabase storage space room usage files database free plan full check",
+    desk: true,
+  },
+  {
+    tab: "sync",
+    section: "tidy",
+    label: "Tidy up Supabase",
+    words: "supabase tidy clean remove copies cloud management",
+    desk: true,
+  },
+  {
+    tab: "about",
+    section: "updates",
+    label: "Updates",
+    words: "update updates check install automatically version new",
+    desk: true,
   },
   {
     tab: "shortcuts",

@@ -142,6 +142,10 @@ const paths = {
   moreVertical: "M12 5h.01M12 12h.01M12 19h.01",
   arrowUp: "M12 19V5M6 11l6-6 6 6",
   paste: "M9 4.5h6v2.5H9zM15 5.5h2.5a1 1 0 0 1 1 1V20a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1V6.5a1 1 0 0 1 1-1H9",
+  /** Web Security. */
+  shield: "M12 3 5 5.8v5.4c0 4.4 3 8.1 7 9.3 4-1.2 7-4.9 7-9.3V5.8L12 3z",
+  /** Activity: a pulse. */
+  activity: "M3 12h4l2.5-6 5 12 2.5-6h4",
 } as const;
 
 export type IconName = keyof typeof paths;

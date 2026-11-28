@@ -538,6 +538,11 @@ export interface Api {
   listEreaders(): Promise<Ereader[]>;
   /** Lets go of a reader's drive so it can be unplugged safely. */
   ejectEreader(reader: Ereader): Promise<void>;
+  /** Closing the window hides TBV in the system tray (a computer). */
+  setCloseToTray(on: boolean): Promise<void>;
+  /** TBV starts, minimized, when you sign in to Windows. */
+  setStartWithWindows(on: boolean): Promise<void>;
+  startWithWindows(): Promise<boolean>;
   /** Copies a book onto the reader plugged in at `root`. The library's copy is never changed. */
   copyToEreader(bookId: string, root: string): Promise<CopiedToEreader>;
   /** Kindle by email, if it's set up on this device. */
@@ -1367,6 +1372,9 @@ function appApi(): Api {
     saveFetched: async (bookId, source, values) => (await core).invoke("save_fetched", { bookId, source, values }),
     listEreaders: async () => (await core).invoke<Ereader[]>("list_ereaders"),
     ejectEreader: async (reader) => (await core).invoke("eject_ereader", { root: reader.root, name: reader.name }),
+    setCloseToTray: async (on) => (await core).invoke("set_close_to_tray", { on }),
+    setStartWithWindows: async (on) => (await core).invoke("set_start_with_windows", { on }),
+    startWithWindows: async () => (await core).invoke<boolean>("start_with_windows"),
     copyToEreader: async (bookId, root) => (await core).invoke<CopiedToEreader>("copy_to_ereader", { bookId, root }),
     kindleEmailSettings: async () => (await core).invoke<KindleEmailView | null>("kindle_email_settings"),
     saveKindleEmail: async (settings) => (await core).invoke<KindleEmailView>("save_kindle_email", { settings }),

@@ -1518,6 +1518,11 @@ export async function webApi(): Promise<Api> {
     ejectEreader: async () => {
       throw new Error(SENDING_DESKTOP_ONLY);
     },
+    setCloseToTray: async () => {},
+    setStartWithWindows: async () => {
+      throw new Error("Starting with Windows works in the desktop app.");
+    },
+    startWithWindows: async () => false,
     copyToEreader: async () => {
       throw new Error(SENDING_DESKTOP_ONLY);
     },

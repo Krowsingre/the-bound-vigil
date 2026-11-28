@@ -3132,3 +3132,202 @@ kbd {
 .kindle-dialog > .settings-row-hint {
   margin: 0 0 12px;
 }
+
+/* ── Attunement windows, Nexus, Web Security, Sync, Storage, Activity, About (embre, 28 November) ── */
+.at-window {
+  width: min(720px, calc(100vw - 48px));
+  max-height: calc(100vh - 80px);
+  overflow-y: auto;
+}
+.at-window.at-wide-window,
+.at-window.at-provider-window,
+.at-window.shortcuts-sheet,
+.at-window.plan-sheet {
+  width: min(920px, calc(100vw - 48px));
+}
+.at-window-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+.at-window-subhead {
+  margin: 8px 0 0;
+  font: 600 15px/1.3 var(--font-serif);
+}
+.at-window-list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.at-window-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 0;
+  border-top: 1px solid var(--border);
+}
+.at-window-item:first-child {
+  border-top: 0;
+}
+.at-window-add {
+  display: flex;
+  gap: 8px;
+}
+.at-window-add > input {
+  flex: 1;
+  min-width: 0;
+}
+/* A value on the right of a row: a count, a size, a plan. */
+.at-count {
+  color: var(--text-muted);
+  font-size: 13.5px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.at-count.is-strong {
+  color: var(--text);
+  font-size: 14px;
+}
+.at-sync-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-muted);
+  font-size: 13.5px;
+}
+.at-sync-state .status-dot {
+  margin: 0;
+}
+.at-card-actions {
+  padding-top: var(--at-control-gap);
+  border-top: 1px solid var(--border);
+}
+/* Sync Options: two columns of switches in one card. */
+.at-rows.at-columns {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
+  column-gap: calc(var(--at-control-gap) * 3);
+}
+.at-rows.at-columns > .at-row {
+  grid-template-columns: minmax(0, 1fr) auto;
+  border-top: 0;
+  border-bottom: 1px solid var(--border);
+}
+.at-rows.at-columns + .at-rows > .at-row:first-child {
+  border-top: 0;
+}
+.at-pairing {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.at-pairing .home-qr {
+  width: 132px;
+  height: 132px;
+  padding: 4px;
+}
+.at-pairing-text {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-start;
+}
+.at-pairing-text .at-buttons {
+  justify-content: flex-start;
+}
+.at-meter {
+  flex: 0 1 220px;
+  min-width: 120px;
+}
+/* Activity: the page fills the window and never scrolls; each card shares the height, and
+   what's inside it scrolls in its own frame under its buttons. */
+.content:has(.at-activity) {
+  overflow: hidden;
+}
+.settings-page:has(.at-activity) {
+  height: 100%;
+}
+.settings-body:has(.at-activity) {
+  box-sizing: border-box;
+  height: 100%;
+  min-height: 0;
+}
+.at-activity {
+  flex: 1;
+  min-height: 0;
+}
+.at-activity > .at-section:not(.is-folded) {
+  flex: 0 1 auto;
+  min-height: 0;
+}
+.at-activity > .at-section:last-child:not(.is-folded) {
+  flex-grow: 1;
+}
+.at-activity .lining-lede {
+  display: none;
+}
+.at-activity .at-activity-frame {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+.at-activity .activity-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--surface);
+}
+.at-activity .imports-page .activity-head {
+  padding-bottom: 8px;
+}
+.at-activity .imports-empty {
+  margin: 12px auto;
+  gap: 6px;
+}
+/* About › Open-source licences: each licence's full text. */
+.at-licences {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.at-licence h3 {
+  margin: 0 0 6px;
+  font: 600 15px/1.3 var(--font-serif);
+}
+.at-licence-text {
+  max-height: 260px;
+  margin: 0;
+  overflow: auto;
+  padding: 10px 12px;
+  border-radius: var(--radius-s);
+  background: var(--surface-sunk);
+  font: 11.5px/1.5 ui-monospace, "SF Mono", Menlo, monospace;
+  white-space: pre-wrap;
+}
+.at-choice.at-nexus-start {
+  width: auto;
+}
+.at-pair .at-row.is-stacked .settings-select {
+  width: 100%;
+}
+.at-pair .at-row.is-stacked > .at-row-control {
+  justify-content: flex-end;
+}
+.at-pair .at-row.is-stacked > .at-row-control > .at-path {
+  flex-basis: 100%;
+}
+.at-nexus-home {
+  flex: 1 1 240px;
+  min-width: 0;
+}
+.at-row-control .btn-danger-text,
+.at-buttons .btn-danger-text {
+  margin-right: 0;
+}
+.at-activity .imports-empty > svg {
+  display: none;
+}

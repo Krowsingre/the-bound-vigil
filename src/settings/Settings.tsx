@@ -9,6 +9,9 @@ import { BrowserTab } from "./BrowserTab";
 import { AboutTab, AccessibilityTab, PlanTab, AdvancedTab, CollectionsTab, FilesTab, LibraryTab, NotesTab, ReadingTab, ShortcutsTab } from "./OtherTabs";
 import { DeskAppearance, DeskLibrary, DeskManagement, DeskReading } from "./DeskPages";
 import { DeskConnections } from "./DeskConnections";
+import { DeskNexus, DeskWebSecurity } from "./DeskNexus";
+import { DeskActivity, DeskStorage, DeskSync } from "./DeskSync";
+import { DeskAbout, DeskAccessibility } from "./DeskAbout";
 import { searchSettings, SETTINGS_TABS, type SettingsTab } from "./settingsIndex";
 import { SyncTab } from "./SyncTab";
 import { EreadersTab } from "./EreadersTab";
@@ -16,6 +19,7 @@ import { isHome, isWeb } from "../api";
 import { WebSyncTab } from "../web/WebConnect";
 import { PrefsDesk, unfoldSection } from "./controls";
 import { ActivityTab, type ActivitySide } from "./ActivityTab";
+import { AtWindow } from "./AtWindow";
 import { useShortcuts } from "../lib/shortcuts";
 import { useNarrow } from "../lib/useNarrow";
 
@@ -58,10 +62,21 @@ const DESK_GROUPS: DeskPage[][] = [
     { tab: "collections", label: "Library", icon: "library", holds: ["collections"] },
     { tab: "library", label: "Management", icon: "layers", holds: ["library", "notes", "files"] },
     { tab: "ereaders", label: "Connections", icon: "connections", holds: ["ereaders"] },
-    own("browser"),
+    // Discover's settings are Nexus and Web Security (embre, 28 November).
+    { tab: "browser", label: "Nexus", icon: "globe", holds: ["browser"] },
+    own("security"),
   ],
-  [{ tab: "sync", label: "Sync & Backup", icon: "cloud", holds: ["sync", "activity"] }],
-  [{ tab: "accessibility", label: "Accessibility", icon: "accessibility", holds: ["accessibility", "shortcuts"] }],
+  // Sync & Backup split in three (embre, 28 November).
+  [
+    { tab: "sync", label: "Sync", icon: "cloud", holds: ["sync"] },
+    own("storage"),
+    { tab: "activity", label: "Activity", icon: "activity", holds: ["activity"] },
+  ],
+  [
+    { tab: "accessibility", label: "Accessibility", icon: "accessibility", holds: ["accessibility", "shortcuts"] },
+    // About is back on the computer (embre, 28 November), with Troubleshooting from Advanced.
+    { tab: "about", label: "About", icon: "info", holds: ["about", "advanced"] },
+  ],
 ];
 const DESK_PAGES = DESK_GROUPS.flat();
 /** Sections that moved to another page on a computer, as "tab/section". */
@@ -77,12 +92,23 @@ const DESK_SECTION_PAGE: Record<string, SettingsTab> = {
   "appearance/privacy": "collections",
   "appearance/sanctum": "collections",
   "reading/read-along": "collections",
+  // Web Security (embre, 28 November).
+  "browser/protection": "security",
+  "browser/redirects": "security",
+  "browser/sites": "security",
+  "browser/sitedata": "security",
+  "browser/history": "security",
+  // Storage & Backup.
+  "sync/usage": "storage",
+  "sync/storage": "storage",
+  "sync/tidy": "storage",
+  "sync/contents": "storage",
+  "sync/move": "storage",
+  "sync/backup": "storage",
+  "sync/places": "storage",
 };
-/**
- * You & TBV is gone from the computer (embre, 27 November); its things wait for an About
- * section. Until then "Your plan…" opens the plans in a window over Attunement.
- */
-const NOT_ON_DESK = new Set<SettingsTab>(["plan", "about", "advanced"]);
+/** Your plan opens in a window over Attunement (from About's Plan card, or from elsewhere in TBV). */
+const NOT_ON_DESK = new Set<SettingsTab>(["plan"]);
 
 /** The computer page holding a tab (or one of its sections). */
 export function deskPageOf(tab: SettingsTab, section?: string): DeskPage {
@@ -92,7 +118,7 @@ export function deskPageOf(tab: SettingsTab, section?: string): DeskPage {
 }
 
 /** The computer pages built to the Attunement framework: no page title, sections that fold. */
-const ATTUNE_PAGES = new Set<SettingsTab>(["account", "appearance", "reading", "collections", "library", "ereaders"]);
+const ATTUNE_PAGES = new Set<SettingsTab>(["account", "appearance", "reading", "collections", "library", "ereaders", "browser", "security", "sync", "storage", "activity", "accessibility", "about"]);
 
 /** Settings: its own menu of pages on the left, the chosen page on the right.
  * A phone opens on a landing page of cards instead; a computer opens on Appearance. */
@@ -152,9 +178,12 @@ export function Settings({
   const desk = !narrow && !isWeb && !isHome;
   // Account is a computer page for now: a window narrowed below the computer layout shows Visage instead.
   if (!desk && tab === "account") tab = "profile";
+  // Web Security and Storage & Backup are computer pages; a narrow window shows the page they came from.
+  if (!desk && tab === "security") tab = "browser";
+  if (!desk && tab === "storage") tab = "sync";
   // Account is a computer page for now; phones find the same things on Visage.
   const results = searchSettings(query).filter(
-    (r) => TABS.some((t) => t.tab === r.tab) && (keys || r.tab !== "shortcuts") && (desk || r.tab !== "account") && !(desk && NOT_ON_DESK.has(r.tab) && r.tab !== "plan"),
+    (r) => TABS.some((t) => t.tab === r.tab) && (keys || r.tab !== "shortcuts") && (desk || r.tab !== "account") && (desk || !r.desk) && !(desk && NOT_ON_DESK.has(r.tab) && r.tab !== "plan"),
   );
   const planOpen = desk && tab === "plan";
   const deskPage = desk && tab ? deskPageOf(tab) : null;
@@ -196,11 +225,6 @@ export function Settings({
 
   const deskContent = (() => {
     if (!deskPage) return null;
-    const part = (t: SettingsTab, node: React.ReactNode) => (
-      <div key={t} id={`settings-tab-${t}`} className="settings-desk-part">
-        {node}
-      </div>
-    );
     switch (deskPage.tab) {
       case "account":
         return <AccountPage />;
@@ -214,27 +238,29 @@ export function Settings({
         return <DeskManagement />;
       case "ereaders":
         return <DeskConnections />;
+      case "browser":
+        return <DeskNexus />;
+      case "security":
+        return <DeskWebSecurity />;
       case "sync":
-        return [part("sync", <SyncTab onRestored={onRestored} onOpenPlaces={onOpenPlaces} />), part("activity", <ActivityTab {...activity} />)];
+        return <DeskSync />;
+      case "storage":
+        return <DeskStorage onRestored={onRestored} onOpenPlaces={onOpenPlaces} />;
+      case "activity":
+        return <DeskActivity imports={activity.imports} sync={activity.sync} />;
       case "accessibility":
         return (
           <>
-            <AccessibilityTab onShortcuts={keys ? () => setShortcutsOpen(true) : undefined} />
+            <DeskAccessibility keys={keys} />
             {shortcutsOpen && (
-              <div className="dialog-backdrop" onPointerDown={(e) => e.target === e.currentTarget && setShortcutsOpen(false)}>
-                <div className="dialog shortcuts-sheet" role="dialog" aria-label="Keyboard shortcuts" onKeyDown={(e) => e.key === "Escape" && setShortcutsOpen(false)}>
-                  <div className="shortcuts-sheet-head">
-                    <h2>Keyboard shortcuts</h2>
-                    <button type="button" className="icon-btn" aria-label="Close" autoFocus onClick={() => setShortcutsOpen(false)}>
-                      <Icon name="close" size={18} />
-                    </button>
-                  </div>
-                  <ShortcutsTab />
-                </div>
-              </div>
+              <AtWindow title="Keyboard shortcuts" className="shortcuts-sheet" onClose={() => setShortcutsOpen(false)}>
+                <ShortcutsTab />
+              </AtWindow>
             )}
           </>
         );
+      case "about":
+        return <DeskAbout />;
       default:
         return null;
     }
@@ -405,11 +431,11 @@ export function Settings({
         <PrefsDesk.Provider value={desk}>{content}</PrefsDesk.Provider>
       </div>
       {planOpen && (
-        <div className="dialog-backdrop" onPointerDown={(e) => e.target === e.currentTarget && onTab("appearance")}>
-          <div className="dialog plan-sheet" role="dialog" aria-label="Your plan" onKeyDown={(e) => e.key === "Escape" && onTab("appearance")}>
+        <div className="dialog-backdrop" onPointerDown={(e) => e.target === e.currentTarget && onTab("about")}>
+          <div className="dialog plan-sheet" role="dialog" aria-label="Your plan" onKeyDown={(e) => e.key === "Escape" && onTab("about")}>
             <div className="shortcuts-sheet-head">
               <h2>Your plan</h2>
-              <button type="button" className="icon-btn" aria-label="Close" autoFocus onClick={() => onTab("appearance")}>
+              <button type="button" className="icon-btn" aria-label="Close" autoFocus onClick={() => onTab("about")}>
                 <Icon name="close" size={18} />
               </button>
             </div>

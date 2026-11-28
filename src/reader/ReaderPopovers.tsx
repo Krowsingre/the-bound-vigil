@@ -90,7 +90,7 @@ function ScrollSpeeds({ settings, onChange }: { settings: ReaderSettings; onChan
         <input type="range" aria-label="Auto-scroll speed" min={1} max={100} value={settings.autoScrollSpeed}
           onChange={(event) => onChange({ autoScrollSpeed: Number(event.target.value) })} />
       </label>
-      <p className="settings-row-hint">Tap the page three times to start or stop auto-scroll{keys && isApp && !isIOS && !isAndroid ? " (or press Ctrl+Space)" : ""}.</p>
+      <p className="settings-row-hint">{keys ? "Press Ctrl+Space to start or stop auto-scroll." : "Tap the page three times to start or stop auto-scroll."}</p>
     </div>
   );
 }

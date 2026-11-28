@@ -1,6 +1,6 @@
 import { setAuthorStyle } from "../lib/authorNames";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from "react";
-import { api } from "../api";
+import { api, isApp, isWindows } from "../api";
 import { startupStep } from "../splash/startup";
 import {
   adaptiveColors,
@@ -166,6 +166,10 @@ export function AppSettingsProvider({ children }: { children: React.ReactNode })
   // Set while drawing, so names already follow it on the first screen.
   setAuthorStyle(settings.authorNames);
   useLayoutEffect(() => applyAppSettings(settings, dark, adaptive), [settings, dark, adaptive]);
+  // Close to system tray lives with the other settings; the app is told as it opens and on each change.
+  useEffect(() => {
+    if (isApp && isWindows) void api.setCloseToTray(settings.closeToTray).catch(() => undefined);
+  }, [settings.closeToTray]);
   // The saved look is on, so the splash may go once the rest is ready.
   useEffect(() => {
     if (loaded) startupStep("look");
