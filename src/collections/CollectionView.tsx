@@ -405,7 +405,8 @@ function AddBooksDialog({
 
   const pickRange = useRangePick();
   const toggle = (id: string, shift = false) =>
-    setPicked((p) => pickRange(p, (books ?? []).filter((b) => !already.has(b.id)).map((b) => b.id), id, shift));
+    // Worked out here, not in the state updater, which React may run twice.
+    setPicked(pickRange(picked, (books ?? []).filter((b) => !already.has(b.id)).map((b) => b.id), id, shift));
 
   return (
     <div className="dialog-backdrop" onPointerDown={(e) => e.target === e.currentTarget && onCancel()}>

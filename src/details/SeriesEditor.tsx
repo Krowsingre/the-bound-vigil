@@ -35,16 +35,20 @@ export function rowsOf(places: SeriesPlace[]): PlaceRow[] {
   for (const { name, places: here } of groupPlaces(places)) {
     const sides = here.filter((p) => p.number == null && p.after != null);
     const numbered = here.filter((p) => p.number != null || p.omnibus != null);
-    const omnibus = numbered.find((p) => p.omnibus != null)?.omnibus;
-    if (numbered.length || !sides.length)
+    // One row per omnibus number, so Omnibus 1 (1–3) and Omnibus 2 (4–6) stay apart.
+    const omnibuses = [...new Set(numbered.map((p) => p.omnibus ?? null))];
+    if (!numbered.length && !sides.length) rows.push({ key: nextKey++, name, kind: "number", number: "", after: "" });
+    for (const omnibus of omnibuses) {
+      const these = numbered.filter((p) => (p.omnibus ?? null) === omnibus);
       rows.push({
         key: nextKey++,
         name,
         kind: omnibus != null ? "omnibus" : "number",
-        number: numbersText(numbered),
+        number: numbersText(these),
         after: "",
         ...(omnibus != null ? { omnibus: text(omnibus) } : {}),
       });
+    }
     for (const p of sides) rows.push({ key: nextKey++, name, kind: "side", number: "", after: text(p.after) });
   }
   return rows;

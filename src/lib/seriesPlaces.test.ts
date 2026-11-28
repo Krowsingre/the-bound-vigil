@@ -95,3 +95,18 @@ describe("omnibus numbers", () => {
     expect(placesFromFields(fields)[0]).toEqual({ name: "Barbarian Chef", number: 4, end: 6, omnibus: 2 });
   });
 });
+
+describe("two omnibuses in one series", () => {
+  it("reopen as two rows, each with its own number", () => {
+    const places = [
+      { name: "Barbarian Chef", number: 1, end: 3, omnibus: 1 },
+      { name: "Barbarian Chef", number: 4, end: 6, omnibus: 2 },
+    ];
+    const rows = rowsOf(places);
+    expect(rows.map((r) => [r.kind, r.number, r.omnibus])).toEqual([
+      ["omnibus", "1–3", "1"],
+      ["omnibus", "4–6", "2"],
+    ]);
+    expect(placesFromRows(rows)).toEqual(places);
+  });
+});
